@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, LogOut, Pencil, Plus, ShieldCheck } from "lucide-react"
+import { domainDisplayHost } from "@/lib/domains"
 import { CreateBusinessDialog } from "./create-business-dialog"
 import { EditBusinessDialog } from "./edit-business-dialog"
 
@@ -22,6 +23,9 @@ export interface BusinessRow {
   email: string | null
   logo_url: string | null
   created_at: string
+  /** Every host this business can be reached on. */
+  domains: { domain: string; is_primary: boolean; is_active: boolean; label: string | null }[]
+  /** The primary domain, kept as a convenience for single-value renders. */
   domain: string | null
   config: {
     timezone: string | null
@@ -134,7 +138,7 @@ export function SuperAdminDashboard({
                   <TableHeader>
                     <TableRow>
                       <TableHead>Business</TableHead>
-                      <TableHead>Subdomain</TableHead>
+                      <TableHead>Domains</TableHead>
                       <TableHead>Owner</TableHead>
                       <TableHead>Currency</TableHead>
                       <TableHead>Created</TableHead>
@@ -149,15 +153,29 @@ export function SuperAdminDashboard({
                           <div className="text-xs text-muted-foreground">{b.name_abbreviation}</div>
                         </TableCell>
                         <TableCell>
-                          {b.domain ? (
-                            <a
-                              href={`http://${b.domain}.${rootDomain}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-primary underline underline-offset-2"
-                            >
-                              {b.domain}.{rootDomain}
-                            </a>
+                          {b.domains?.length ? (
+                            <div className="flex flex-col gap-1">
+                              {b.domains.map((d) => {
+                                const host = domainDisplayHost(d.domain, rootDomain)
+                                return (
+                                  <div key={d.domain} className="flex items-center gap-1.5">
+                                    <a
+                                      href={`http://${host}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className={
+                                        d.is_active
+                                          ? "text-primary underline underline-offset-2"
+                                          : "text-muted-foreground line-through"
+                                      }
+                                    >
+                                      {host}
+                                    </a>
+                                    {d.is_primary && <Badge className="h-4 px-1 text-[10px]">primary</Badge>}
+                                  </div>
+                                )
+                              })}
+                            </div>
                           ) : (
                             <Badge variant="secondary">none</Badge>
                           )}

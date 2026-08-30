@@ -16,6 +16,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Loader2 } from "lucide-react"
+import { DomainManager } from "./domain-manager"
 import type { BusinessRow } from "./superadmin-dashboard"
 
 interface Props {
@@ -42,7 +43,6 @@ export function EditBusinessDialog({ business, onOpenChange, rootDomain, onSaved
       phone: business.phone ?? "",
       email: business.email ?? "",
       logo_url: business.logo_url ?? "",
-      subdomain: business.domain ?? "",
       timezone: business.config?.timezone ?? "Europe/Rome",
       currency: business.config?.currency ?? "EUR",
       minimum_charge: String(business.config?.minimum_charge ?? "0"),
@@ -84,7 +84,6 @@ export function EditBusinessDialog({ business, onOpenChange, rootDomain, onSaved
           phone: form.phone || null,
           email: form.email || null,
           logo_url: form.logo_url || null,
-          subdomain: form.subdomain,
           timezone: form.timezone,
           currency: form.currency,
           minimum_charge: Number(form.minimum_charge) || 0,
@@ -150,21 +149,8 @@ export function EditBusinessDialog({ business, onOpenChange, rootDomain, onSaved
 
           <Separator />
 
-          {/* Subdomain */}
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground">Subdomain</h3>
-            <Field label="Subdomain *">
-              <div className="flex items-center gap-2">
-                <Input
-                  value={form.subdomain ?? ""}
-                  onChange={(e) => set("subdomain", e.target.value.toLowerCase())}
-                  className="max-w-[200px]"
-                />
-                <span className="text-sm text-muted-foreground">.{rootDomain}</span>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">Changing this changes the owner's login URL.</p>
-            </Field>
-          </section>
+          {/* Domains — a business can be reached on any number of hosts. */}
+          {business && <DomainManager businessId={business.business_id} rootDomain={rootDomain} />}
 
           <Separator />
 

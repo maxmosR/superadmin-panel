@@ -1,19 +1,9 @@
 import { NextResponse } from "next/server"
 import { getPlatformAdmin } from "@/lib/superadmin-auth"
 import { createAdminClient } from "@/lib/supabase-admin"
+import { normalizeDomain } from "@/lib/domains"
 
 export const dynamic = "force-dynamic"
-
-// Only lowercase letters, digits and hyphens; must start/end alphanumeric.
-const SUBDOMAIN_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
-const RESERVED = new Set(["superadmin", "www", "app", "api", "admin", "localhost"])
-
-function normalizeSubdomain(raw: unknown): string | null {
-  if (typeof raw !== "string") return null
-  const s = raw.trim().toLowerCase()
-  if (!SUBDOMAIN_RE.test(s) || RESERVED.has(s)) return null
-  return s
-}
 
 // ---------------------------------------------------------------------------
 // GET /api/businesses — list all businesses with domain + owner.
@@ -27,7 +17,7 @@ export async function GET() {
     .from("businesses")
     .select(
       "business_id, business_name, name_abbreviation, tax_id, address, phone, email, logo_url, created_at, deleted, " +
-        "business_domains(domain), " +
+        "business_domains(domain, is_primary, is_active, label), " +
         "business_configurations(timezone, currency, minimum_charge, max_concurrent_appointments, open_days_and_hours), " +
         // Disambiguate: businesses<->profiles has 3 FKs (business_id, created_by,
         // updated_by). Embed via the tenant link (profiles.business_id).
@@ -48,7 +38,14 @@ export async function GET() {
     email: b.email,
     logo_url: b.logo_url,
     created_at: b.created_at,
-    domain: b.business_domains?.[0]?.domain ?? null,
+    domains: (b.business_domains ?? []).slice().sort((x: any, y: any) =>
+      x.is_primary === y.is_primary ? String(x.domain).localeCompare(String(y.domain)) : x.is_primary ? -1 : 1,
+    ),
+    // Back-compat single value: the primary domain (or the first one there is).
+    domain:
+      (b.business_domains ?? []).find((d: any) => d.is_primary)?.domain ??
+      b.business_domains?.[0]?.domain ??
+      null,
     config: b.business_configurations?.[0] ?? null,
     owner: (b.profiles ?? []).find((p: any) => p.role === "owner") ?? null,
   }))
@@ -75,7 +72,7 @@ export async function POST(request: Request) {
   const nameAbbreviation = typeof body.name_abbreviation === "string" ? body.name_abbreviation.trim() : ""
   const ownerEmail = typeof body.owner_email === "string" ? body.owner_email.trim().toLowerCase() : ""
   const ownerPassword = typeof body.owner_password === "string" ? body.owner_password : ""
-  const subdomain = normalizeSubdomain(body.subdomain)
+  const subdomain = normalizeDomain(body.subdomain)
 
   const errors: string[] = []
   if (!businessName) errors.push("business_name is required")
@@ -171,6 +168,8 @@ export async function POST(request: Request) {
     const { error: domainErr } = await supabase.from("business_domains").insert({
       domain: subdomain,
       business_id: businessId,
+      is_primary: true,
+      is_active: true,
     })
     if (domainErr) throw new Error(domainErr.message)
 
@@ -266,19 +265,23 @@ export async function PATCH(request: Request) {
       }
     }
 
-    // --- subdomain (business_domains) -------------------------------------
+    // --- domains ----------------------------------------------------------
+    // A business owns MANY domains; they are added, renamed, re-pointed and
+    // removed through /api/businesses/domains. The legacy single `subdomain`
+    // field is still accepted here and applied to the PRIMARY domain so older
+    // callers keep working.
     if ("subdomain" in body) {
-      const subdomain = normalizeSubdomain(body.subdomain)
+      const subdomain = normalizeDomain(body.subdomain)
       if (!subdomain) throw new Error("subdomain is invalid or reserved")
 
-      const { data: currentDomain } = await supabase
+      const { data: current } = await supabase
         .from("business_domains")
         .select("domain")
         .eq("business_id", businessId)
+        .eq("is_primary", true)
         .maybeSingle()
 
-      if (currentDomain?.domain !== subdomain) {
-        // Ensure the new subdomain isn't taken by another business.
+      if (current?.domain !== subdomain) {
         const { data: taken } = await supabase
           .from("business_domains")
           .select("business_id")
@@ -288,12 +291,31 @@ export async function PATCH(request: Request) {
           return NextResponse.json({ error: `Subdomain "${subdomain}" is already taken` }, { status: 409 })
         }
 
-        // domain is the PK, so replace the row rather than updating in place.
-        await supabase.from("business_domains").delete().eq("business_id", businessId)
-        const { error } = await supabase
+        // `domain` is the primary key, so a rename is an insert + delete.
+        const { error: insErr } = await supabase
           .from("business_domains")
-          .insert({ domain: subdomain, business_id: businessId })
-        if (error) throw new Error(error.message)
+          .insert({ domain: subdomain, business_id: businessId, is_primary: !current, is_active: true })
+        if (insErr && insErr.code !== "23505") throw new Error(insErr.message)
+
+        if (current?.domain) {
+          await supabase
+            .from("business_domains")
+            .update({ is_primary: false })
+            .eq("business_id", businessId)
+            .eq("domain", current.domain)
+          await supabase
+            .from("business_domains")
+            .delete()
+            .eq("business_id", businessId)
+            .eq("domain", current.domain)
+        }
+
+        const { error: primErr } = await supabase
+          .from("business_domains")
+          .update({ is_primary: true, is_active: true, updated_at: new Date().toISOString() })
+          .eq("business_id", businessId)
+          .eq("domain", subdomain)
+        if (primErr) throw new Error(primErr.message)
       }
     }
 

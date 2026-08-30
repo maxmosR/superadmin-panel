@@ -9,7 +9,9 @@ Each business gets:
 - a `businesses` row + `business_configurations` (timezone, currency, minimum
   charge, max concurrent appointments, open hours)
 - an owner **auth user** and an owner `profiles` row (`role = owner`)
-- a `business_domains` subdomain that the tenant app resolves to route requests
+- one or more `business_domains` entries — the hosts the tenant app is reached
+  on. The backend turns a request host into the tenant's `business_id`, which is
+  why the tenant apps carry no business id in their environment at all
 
 ## What it does
 
@@ -20,7 +22,8 @@ Each business gets:
 | `GET /api/me`      | Confirms the signed-in user is an active `platform_admins` row |
 | `GET /api/businesses`   | List all businesses with domain, config and owner        |
 | `POST /api/businesses`  | Provision a business + owner (atomic, rolls back on failure) |
-| `PATCH /api/businesses` | Update business, config, subdomain, or reset owner password |
+| `PATCH /api/businesses` | Update business, config, primary domain, or reset owner password |
+| `GET/POST/PATCH/DELETE /api/businesses/domains` | Manage a business' domains — add, rename, re-point, enable/disable, choose the primary |
 
 Access is gated by [`middleware.ts`](middleware.ts): every page except `/login`
 requires an active `platform_admins` row. Provisioning uses the Supabase
