@@ -36,10 +36,12 @@ it writes directly into that database's `businesses`, `business_domains`,
 `business_configurations`, `profiles` and `platform_admins` tables. Point
 `NEXT_PUBLIC_SUPABASE_URL` / keys at that same project.
 
-The `platform_admins` table and its RLS live in
-[`supabase/migrations/20260712000001_super_admin.sql`](supabase/migrations/20260712000001_super_admin.sql),
-included here for reference (it normally lives in / is applied from the tenant
-app's migration history — do not apply it twice).
+The `platform_admins` table and its RLS live in the storefront repo, the only
+backend source:
+`BirraOra-three-month-test/supabase/migrations/20260712184147_super_admin.sql`
+(and the tenancy migrations after it). This repo holds no `supabase/` folder;
+schema changes are PRs to the storefront repo and are deployed only by its
+GitHub Actions workflow (see `docs/backend-deploy.md` there).
 
 ## Setup
 
