@@ -5,7 +5,7 @@ import { SuperAdminDashboard } from "@/components/superadmin/superadmin-dashboar
 export const dynamic = "force-dynamic"
 
 export default async function SuperAdminPage() {
-  // Middleware already gates this route, but verify server-side as defence in depth.
+  // proxy.ts redirect is only a convenience; this server-side check is the real gate.
   const admin = await getPlatformAdmin()
   if (!admin) redirect("/login")
 

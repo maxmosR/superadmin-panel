@@ -19,15 +19,25 @@ Each business gets:
 | ------------------ | ------------------------------------------------------------- |
 | `/login`           | Platform-admin sign in (Supabase email/password)              |
 | `/`                | Dashboard — list businesses, create, edit                     |
-| `GET /api/me`      | Confirms the signed-in user is an active `platform_admins` row |
+| `GET /api/me`      | Confirms the signed-in user is an active `platform_admins` row (401/403 otherwise) |
 | `GET /api/businesses`   | List all businesses with domain, config and owner        |
 | `POST /api/businesses`  | Provision a business + owner (atomic, rolls back on failure) |
 | `PATCH /api/businesses` | Update business, config, primary domain, or reset owner password |
 | `GET/POST/PATCH/DELETE /api/businesses/domains` | Manage a business' domains — add, rename, re-point, enable/disable, choose the primary |
 
-Access is gated by [`middleware.ts`](middleware.ts): every page except `/login`
-requires an active `platform_admins` row. Provisioning uses the Supabase
-**service-role key** (bypasses RLS) and only runs after the admin check passes.
+Access is checked in three independent places, and none relies on another:
+
+- [`proxy.ts`](proxy.ts) (Next.js 16's replacement for `middleware.ts`) refreshes
+  the session and redirects non-operators on page routes to `/login`. It is a
+  convenience, never the guard.
+- `app/page.tsx` re-checks the operator server-side and redirects to `/login`.
+- **Every API route handler checks the operator itself**, first, via
+  [`requireOperator()`](lib/require-operator.ts): `401 {"error":"unauthenticated"}`
+  without a session, `403 {"error":"not_operator"}` for a signed-in user with no
+  active `platform_admins` row. No service-role client is created before it passes.
+
+Provisioning uses the Supabase **service-role key** (bypasses RLS) and only runs
+after that check passes. `npm test` proves each handler refuses both cases.
 
 ## Relationship to the tenant app
 
@@ -74,5 +84,9 @@ npm run dev                  # http://localhost:3000
 
 ## Stack
 
-Next.js 14 (App Router) · Supabase (`@supabase/ssr`) · Tailwind CSS v4 ·
-shadcn/ui (Radix) · TypeScript.
+Next.js 16.4.3 (App Router, `proxy.ts`) · React 19 · Supabase (`@supabase/ssr`) ·
+Tailwind CSS v4 · shadcn/ui (Radix) · TypeScript · Vitest. Node >= 20.9.
+
+Dependencies are pinned to exact versions (no `^`, `~` or `latest`) with one npm
+lockfile; install with `npm ci`. Checks: `npm run build`, `npx tsc --noEmit`,
+`npm test`, `npm run lint` (flat config, `eslint .`).

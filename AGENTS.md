@@ -1,6 +1,13 @@
 ## BirraOra operator console
 
-Platform console for the operator: it creates and manages restaurants (`businesses`, `business_domains`), owner accounts and `platform_admins`. It is a Next.js App Router app on the shared Supabase project and uses the service-role key server-side, only after the `platform_admins` check passes.
+Platform console for the operator: it creates and manages restaurants (`businesses`, `business_domains`), owner accounts and `platform_admins`. It is a Next.js 16.4.3 App Router app (React 19) on the shared Supabase project and uses the service-role key server-side, only after the `platform_admins` check passes.
+
+## Operator access rules
+
+- Every API route handler checks the operator itself, as its first statement: `const guard = await requireOperator(); if (guard.response) return guard.response` (`lib/require-operator.ts`). It answers `401 {"error":"unauthenticated"}` or `403 {"error":"not_operator"}`. Never create the service-role client (`lib/supabase-admin.ts`) before that check, and never rely on `proxy.ts` for it.
+- `proxy.ts` (formerly `middleware.ts`, exports `proxy`) is a convenience redirect for pages only. Pages re-check with `getPlatformAdmin()` and redirect to `/login`.
+- Each new handler gets a case in `tests/operator-guard.test.ts` (401, 403, no service-role client).
+- Dependencies are exact versions, one npm lockfile (`npm ci`). Don't add `^`, `~` or `latest`. Don't enable `cacheComponents` or drop the `force-dynamic` exports.
 
 ## Shared backend (Supabase)
 

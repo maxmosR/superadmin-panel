@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getPlatformAdmin } from "@/lib/superadmin-auth"
+import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { normalizeDomain } from "@/lib/domains"
 
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic"
  * exactly one of them is the primary (enforced by a partial unique index).
  *
  * Nothing here ever leaves the server with a business_id attached to a public
- * response — this console is platform-admin only, gated by getPlatformAdmin().
+ * response — this console is platform-admin only, gated by requireOperator() in every handler.
  */
 
 type Body = Record<string, unknown>
@@ -21,11 +21,6 @@ async function readJson(request: Request): Promise<Body | null> {
   } catch {
     return null
   }
-}
-
-async function requireAdmin() {
-  const admin = await getPlatformAdmin()
-  return admin ? null : NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 }
 
 async function businessExists(supabase: ReturnType<typeof createAdminClient>, businessId: string) {
@@ -69,8 +64,8 @@ async function clearPrimary(supabase: ReturnType<typeof createAdminClient>, busi
 // GET /api/businesses/domains?business_id=… — list a business's domains.
 // ---------------------------------------------------------------------------
 export async function GET(request: Request) {
-  const unauthorized = await requireAdmin()
-  if (unauthorized) return unauthorized
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   const businessId = new URL(request.url).searchParams.get("business_id")
   if (!businessId) return NextResponse.json({ error: "business_id is required" }, { status: 400 })
@@ -92,8 +87,8 @@ export async function GET(request: Request) {
 // Body: { business_id, domain, is_primary?, is_active?, label? }
 // ---------------------------------------------------------------------------
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin()
-  if (unauthorized) return unauthorized
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   const body = await readJson(request)
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
@@ -157,8 +152,8 @@ export async function POST(request: Request) {
 // Body: { business_id, domain, new_domain?, is_primary?, is_active?, label? }
 // ---------------------------------------------------------------------------
 export async function PATCH(request: Request) {
-  const unauthorized = await requireAdmin()
-  if (unauthorized) return unauthorized
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   const body = await readJson(request)
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
@@ -253,8 +248,8 @@ export async function PATCH(request: Request) {
 // unreachable, because the host is the only way to resolve its business_id.
 // ---------------------------------------------------------------------------
 export async function DELETE(request: Request) {
-  const unauthorized = await requireAdmin()
-  if (unauthorized) return unauthorized
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   const params = new URL(request.url).searchParams
   const businessId = params.get("business_id") ?? ""

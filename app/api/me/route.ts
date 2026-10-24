@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
-import { getPlatformAdmin } from "@/lib/superadmin-auth"
+import { requireOperator } from "@/lib/require-operator"
 
 export const dynamic = "force-dynamic"
 
 // Lightweight identity check used by the login flow. Uses only the signed-in
 // user's session (RLS) — no service-role key required.
+// 401 { error: "unauthenticated" } · 403 { error: "not_operator" }
 export async function GET() {
-  const admin = await getPlatformAdmin()
-  if (!admin) return NextResponse.json({ isAdmin: false }, { status: 401 })
-  return NextResponse.json({ isAdmin: true, email: admin.email })
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
+  return NextResponse.json({ isAdmin: true, email: guard.admin.email })
 }

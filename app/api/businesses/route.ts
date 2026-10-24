@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getPlatformAdmin } from "@/lib/superadmin-auth"
+import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { normalizeDomain } from "@/lib/domains"
 
@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic"
 // GET /api/businesses — list all businesses with domain + owner.
 // ---------------------------------------------------------------------------
 export async function GET() {
-  const admin = await getPlatformAdmin()
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -57,8 +57,8 @@ export async function GET() {
 // POST /api/businesses — provision a business + owner account.
 // ---------------------------------------------------------------------------
 export async function POST(request: Request) {
-  const admin = await getPlatformAdmin()
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   let body: any
   try {
@@ -193,8 +193,8 @@ export async function POST(request: Request) {
 // Body: { business_id, ...editable fields }. All fields optional except id.
 // ---------------------------------------------------------------------------
 export async function PATCH(request: Request) {
-  const admin = await getPlatformAdmin()
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   let body: any
   try {

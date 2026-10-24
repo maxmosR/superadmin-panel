@@ -2,21 +2,23 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 /**
- * Super Admin panel auth guard.
+ * Super Admin panel proxy (Next.js 16 replacement for middleware.ts).
  *
- * The whole app is the platform-admin console, so every page except /login is
- * gated behind an active platform_admins row. API routes enforce their own
- * checks (they need the service role) and are never redirected here.
+ * Convenience only — never the guard. It refreshes the session and redirects
+ * non-operators on page routes to /login. Every page re-checks the operator
+ * server-side, and every API route handler checks it itself via
+ * requireOperator() (401 unauthenticated / 403 not_operator); API routes are
+ * never redirected here.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // If environment variables are not available, skip middleware.
+  // If environment variables are not available, skip the proxy.
   if (!supabaseUrl || !supabaseAnonKey) {
-    console.error("[superadmin] Supabase environment variables not found in middleware")
+    console.error("[superadmin] Supabase environment variables not found in proxy")
     return supabaseResponse
   }
 

@@ -5,6 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
+import { operatorCheckFromStatus } from "@/lib/operator-check"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -36,11 +37,18 @@ export default function SuperAdminLoginPage() {
         return
       }
 
-      // Confirm this account is actually a platform admin.
+      // Confirm this account is actually a platform admin:
+      // 401 unauthenticated / 403 not_operator both mean "not an operator".
+      // Any other non-OK status means we couldn't verify: never treat it as success.
       const res = await fetch("/api/me", { method: "GET" })
-      if (res.status === 401) {
+      const check = operatorCheckFromStatus(res.status)
+      if (check !== "operator") {
         await supabase.auth.signOut()
-        setError("This account is not a super admin.")
+        setError(
+          check === "not_operator"
+            ? "This account is not a super admin."
+            : "Could not verify operator access, try again",
+        )
         return
       }
 
