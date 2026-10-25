@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator"
 import { Loader2 } from "lucide-react"
 import { DomainManager } from "./domain-manager"
 import { BusinessProvidersEditor } from "./business-providers-editor"
+import { StaffRolesPanel } from "./staff-roles-panel"
 import type { BusinessRow } from "./superadmin-dashboard"
 
 interface Props {
@@ -51,7 +52,8 @@ export function EditBusinessDialog({ business, onOpenChange, rootDomain, onSaved
       open_days_and_hours: business.config?.open_days_and_hours
         ? JSON.stringify(business.config.open_days_and_hours)
         : "",
-      owner_password: "",
+      sms_sender_name: business.sms_sender_name ?? "",
+      email_from_name: business.email_from_name ?? "",
     })
   }, [business])
 
@@ -90,8 +92,8 @@ export function EditBusinessDialog({ business, onOpenChange, rootDomain, onSaved
           minimum_charge: Number(form.minimum_charge) || 0,
           max_concurrent_appointments: Number(form.max_concurrent_appointments) || 6,
           open_days_and_hours: openHours,
-          // Only send a password when the admin typed one.
-          ...(form.owner_password ? { owner_password: form.owner_password } : {}),
+          sms_sender_name: form.sms_sender_name || null,
+          email_from_name: form.email_from_name || null,
         }),
       })
       const j = await res.json().catch(() => ({}))
@@ -112,7 +114,7 @@ export function EditBusinessDialog({ business, onOpenChange, rootDomain, onSaved
         <DialogHeader>
           <DialogTitle>Edit business</DialogTitle>
           <DialogDescription>
-            {business?.owner?.email ? `Owner: ${business.owner.email}` : "Update business details and configuration."}
+            {business ? `Slug: ${business.slug} (cannot be changed)` : "Update business details and configuration."}
           </DialogDescription>
         </DialogHeader>
 
@@ -208,17 +210,40 @@ export function EditBusinessDialog({ business, onOpenChange, rootDomain, onSaved
 
           <Separator />
 
-          {/* Owner password reset */}
+          {/* Branding */}
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground">Reset owner password (optional)</h3>
-            <Field label="New owner password">
-              <Input
-                type="text"
-                value={form.owner_password ?? ""}
-                onChange={(e) => set("owner_password", e.target.value)}
-                placeholder="Leave empty to keep current password"
-              />
-            </Field>
+            <h3 className="text-sm font-semibold text-muted-foreground">Branding</h3>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <ReadinessBadge ok={!!business?.readiness?.has_owner} label="At least one owner" />
+              <ReadinessBadge ok={!!business?.readiness?.sms_sender_set} label="SMS sender name set" />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Slug">
+                <Input value={business?.slug ?? ""} readOnly disabled />
+              </Field>
+              <Field label="SMS sender name (3–11, registered at OpenAPI.com)">
+                <Input
+                  value={form.sms_sender_name ?? ""}
+                  maxLength={11}
+                  onChange={(e) => set("sms_sender_name", e.target.value)}
+                />
+              </Field>
+              <Field label="Email display name">
+                <Input
+                  value={form.email_from_name ?? ""}
+                  maxLength={80}
+                  onChange={(e) => set("email_from_name", e.target.value)}
+                />
+              </Field>
+            </div>
+          </section>
+
+          <Separator />
+
+          {/* Staff and owners */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-muted-foreground">Staff and owners</h3>
+            {business && <StaffRolesPanel businessId={business.business_id} onChanged={onSaved} />}
           </section>
         </div>
 
@@ -248,5 +273,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <Label className="text-sm">{label}</Label>
       {children}
     </div>
+  )
+}
+
+function ReadinessBadge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span
+      className={
+        "rounded-full border px-2 py-0.5 " +
+        (ok ? "border-green-600/40 text-green-700 dark:text-green-400" : "border-amber-600/40 text-amber-700 dark:text-amber-400")
+      }
+    >
+      {ok ? "✓" : "!"} {label}
+    </span>
   )
 }
