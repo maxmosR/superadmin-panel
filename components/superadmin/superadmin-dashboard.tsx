@@ -12,6 +12,7 @@ import { Loader2, LogOut, Pencil, Plus, ShieldCheck } from "lucide-react"
 import { domainDisplayHost } from "@/lib/domains"
 import { CreateBusinessDialog } from "./create-business-dialog"
 import { EditBusinessDialog } from "./edit-business-dialog"
+import { ProvidersManager } from "./providers-manager"
 
 export interface BusinessRow {
   business_id: string
@@ -199,6 +200,8 @@ export function SuperAdminDashboard({
             )}
           </CardContent>
         </Card>
+
+        <ProvidersManager />
       </main>
 
       <CreateBusinessDialog
