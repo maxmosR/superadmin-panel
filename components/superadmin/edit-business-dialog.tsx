@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Loader2 } from "lucide-react"
 import { DomainManager } from "./domain-manager"
+import { BusinessProvidersEditor } from "./business-providers-editor"
 import type { BusinessRow } from "./superadmin-dashboard"
 
 interface Props {
@@ -151,6 +152,11 @@ export function EditBusinessDialog({ business, onOpenChange, rootDomain, onSaved
 
           {/* Domains — a business can be reached on any number of hosts. */}
           {business && <DomainManager businessId={business.business_id} rootDomain={rootDomain} />}
+
+          <Separator />
+
+          {/* Providers — saved per provider, like the domains above. */}
+          {business && <BusinessProvidersEditor businessId={business.business_id} />}
 
           <Separator />
 
