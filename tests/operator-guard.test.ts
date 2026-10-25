@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 // factory is a spy so we can prove it is never reached for refused callers.
 vi.mock("@/lib/superadmin-auth", () => ({
   lookupOperator: vi.fn(),
-  getPlatformAdmin: vi.fn(),
 }))
 vi.mock("@/lib/supabase-admin", () => ({
   createAdminClient: vi.fn(() => {
@@ -19,6 +18,10 @@ import { createAdminClient } from "@/lib/supabase-admin"
 import * as businesses from "@/app/api/businesses/route"
 import * as domains from "@/app/api/businesses/domains/route"
 import * as me from "@/app/api/me/route"
+import * as providers from "@/app/api/providers/route"
+import * as businessProviders from "@/app/api/businesses/providers/route"
+import * as roles from "@/app/api/businesses/roles/route"
+import * as operators from "@/app/api/operators/route"
 
 const lookup = vi.mocked(lookupOperator)
 const adminClient = vi.mocked(createAdminClient)
@@ -44,8 +47,9 @@ const adminHandlers: Array<[string, () => Promise<Response>]> = [
         jsonRequest("POST", "http://localhost/api/businesses", {
           business_name: "Acme",
           name_abbreviation: "AC",
-          owner_email: "owner@example.com",
-          owner_password: "password123",
+          slug: "acme",
+          owner_identifier: "owner@example.com",
+          owner_kind: "email",
           subdomain: "acme",
         }),
       ),
@@ -84,6 +88,63 @@ const adminHandlers: Array<[string, () => Promise<Response>]> = [
       ),
   ],
 ]
+
+const USER = "00000000-0000-0000-0000-000000000002"
+const PROVIDER = "00000000-0000-0000-0000-000000000003"
+adminHandlers.push(
+  ["GET /api/providers", () => providers.GET()],
+  [
+    "POST /api/providers",
+    () =>
+      providers.POST(
+        jsonRequest("POST", "http://localhost/api/providers", { code: "glovo2", name: "Glovo 2", calc_mode: "marketplace" }),
+      ),
+  ],
+  [
+    "PATCH /api/providers",
+    () => providers.PATCH(jsonRequest("PATCH", "http://localhost/api/providers", { id: PROVIDER, name: "Glovo" })),
+  ],
+  [
+    "GET /api/businesses/providers",
+    () => businessProviders.GET(new Request(`http://localhost/api/businesses/providers?business_id=${BIZ}`)),
+  ],
+  [
+    "PUT /api/businesses/providers",
+    () =>
+      businessProviders.PUT(
+        jsonRequest("PUT", "http://localhost/api/businesses/providers", { business_id: BIZ, provider_id: PROVIDER, is_enabled: true }),
+      ),
+  ],
+  [
+    "GET /api/businesses/roles",
+    () => roles.GET(new Request(`http://localhost/api/businesses/roles?business_id=${BIZ}`)),
+  ],
+  [
+    "POST /api/businesses/roles",
+    () =>
+      roles.POST(
+        jsonRequest("POST", "http://localhost/api/businesses/roles", {
+          business_id: BIZ,
+          identifier: "worker@example.com",
+          kind: "email",
+          role: "worker",
+        }),
+      ),
+  ],
+  [
+    "PATCH /api/businesses/roles",
+    () => roles.PATCH(jsonRequest("PATCH", "http://localhost/api/businesses/roles", { business_id: BIZ, user_id: USER, role: "owner" })),
+  ],
+  [
+    "DELETE /api/businesses/roles",
+    () => roles.DELETE(jsonRequest("DELETE", "http://localhost/api/businesses/roles", { business_id: BIZ, user_id: USER })),
+  ],
+  ["GET /api/operators", () => operators.GET()],
+  [
+    "PATCH /api/operators",
+    () => operators.PATCH(jsonRequest("PATCH", "http://localhost/api/operators", { user_id: USER, is_active: true })),
+  ],
+)
 
 const allHandlers: Array<[string, () => Promise<Response>]> = [
   ...adminHandlers,
