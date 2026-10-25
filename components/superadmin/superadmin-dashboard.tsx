@@ -35,7 +35,14 @@ export interface BusinessRow {
     max_concurrent_appointments: number | null
     open_days_and_hours: unknown | null
   } | null
-  owner: { email: string | null; first_name: string | null; last_name: string | null } | null
+  /** Immutable tenant key (storage folders). */
+  slug: string
+  sms_sender_name: string | null
+  email_from_name: string | null
+  /** From user_roles. */
+  owner_count: number
+  staff_count: number
+  readiness: { has_owner: boolean; sms_sender_set: boolean }
 }
 
 export function SuperAdminDashboard({
@@ -91,6 +98,9 @@ export function SuperAdminDashboard({
           </div>
           <div className="flex items-center gap-3">
             {adminEmail && <span className="hidden text-sm text-muted-foreground sm:inline">{adminEmail}</span>}
+            <Button variant="ghost" size="sm" asChild>
+              <a href="/operators">Operators</a>
+            </Button>
             <Button variant="outline" size="sm" onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
               Sign out
@@ -103,7 +113,7 @@ export function SuperAdminDashboard({
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Businesses</h1>
-            <p className="text-sm text-muted-foreground">Provision new business accounts and their owner logins.</p>
+            <p className="text-sm text-muted-foreground">Provision businesses, their owners and staff.</p>
           </div>
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
@@ -140,7 +150,7 @@ export function SuperAdminDashboard({
                     <TableRow>
                       <TableHead>Business</TableHead>
                       <TableHead>Domains</TableHead>
-                      <TableHead>Owner</TableHead>
+                      <TableHead>Staff</TableHead>
                       <TableHead>Currency</TableHead>
                       <TableHead>Created</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -181,7 +191,15 @@ export function SuperAdminDashboard({
                             <Badge variant="secondary">none</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-sm">{b.owner?.email ?? "—"}</TableCell>
+                        <TableCell className="text-sm">
+                          <div>
+                            {b.owner_count} owner{b.owner_count === 1 ? "" : "s"} · {b.staff_count} total
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+                            {!b.readiness?.has_owner && <span className="rounded-full border border-amber-600/40 px-1.5 text-amber-700">no owner</span>}
+                            {!b.readiness?.sms_sender_set && <span className="rounded-full border border-amber-600/40 px-1.5 text-amber-700">no SMS sender</span>}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-sm">{b.config?.currency ?? "—"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {new Date(b.created_at).toLocaleDateString()}

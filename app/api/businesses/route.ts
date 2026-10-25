@@ -2,11 +2,12 @@ import { NextResponse } from "next/server"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { normalizeDomain } from "@/lib/domains"
+import { SLUG_RE, SMS_SENDER_RE, assignRoleAsOperator, findOrCreateIdentity, parseIdentifier } from "@/lib/roles"
 
 export const dynamic = "force-dynamic"
 
 // ---------------------------------------------------------------------------
-// GET /api/businesses — list all businesses with domain + owner.
+// GET /api/businesses — list all businesses with domains, owners count and readiness.
 // ---------------------------------------------------------------------------
 export async function GET() {
   const guard = await requireOperator()
@@ -16,45 +17,59 @@ export async function GET() {
   const { data, error } = await supabase
     .from("businesses")
     .select(
-      "business_id, business_name, name_abbreviation, tax_id, address, phone, email, logo_url, created_at, deleted, " +
+      "business_id, slug, business_name, name_abbreviation, tax_id, address, phone, email, logo_url, " +
+        "sms_sender_name, email_from_name, created_at, deleted, " +
         "business_domains(domain, is_primary, is_active, label), " +
         "business_configurations(timezone, currency, minimum_charge, max_concurrent_appointments, open_days_and_hours), " +
-        // Disambiguate: businesses<->profiles has 3 FKs (business_id, created_by,
-        // updated_by). Embed via the tenant link (profiles.business_id).
-        "profiles!profiles_business_id_fkey(user_id, email, role, first_name, last_name)",
+        "user_roles(user_id, role)",
     )
     .eq("deleted", false)
     .order("created_at", { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const businesses = (data ?? []).map((b: any) => ({
-    business_id: b.business_id,
-    business_name: b.business_name,
-    name_abbreviation: b.name_abbreviation,
-    tax_id: b.tax_id,
-    address: b.address,
-    phone: b.phone,
-    email: b.email,
-    logo_url: b.logo_url,
-    created_at: b.created_at,
-    domains: (b.business_domains ?? []).slice().sort((x: any, y: any) =>
-      x.is_primary === y.is_primary ? String(x.domain).localeCompare(String(y.domain)) : x.is_primary ? -1 : 1,
-    ),
-    // Back-compat single value: the primary domain (or the first one there is).
-    domain:
-      (b.business_domains ?? []).find((d: any) => d.is_primary)?.domain ??
-      b.business_domains?.[0]?.domain ??
-      null,
-    config: b.business_configurations?.[0] ?? null,
-    owner: (b.profiles ?? []).find((p: any) => p.role === "owner") ?? null,
-  }))
+  const businesses = (data ?? []).map((b: any) => {
+    const owners = (b.user_roles ?? []).filter((r: any) => r.role === "owner")
+    return {
+      business_id: b.business_id,
+      slug: b.slug,
+      business_name: b.business_name,
+      name_abbreviation: b.name_abbreviation,
+      tax_id: b.tax_id,
+      address: b.address,
+      phone: b.phone,
+      email: b.email,
+      logo_url: b.logo_url,
+      sms_sender_name: b.sms_sender_name ?? null,
+      email_from_name: b.email_from_name ?? null,
+      created_at: b.created_at,
+      domains: (b.business_domains ?? []).slice().sort((x: any, y: any) =>
+        x.is_primary === y.is_primary ? String(x.domain).localeCompare(String(y.domain)) : x.is_primary ? -1 : 1,
+      ),
+      // Back-compat single value: the primary domain (or the first one there is).
+      domain:
+        (b.business_domains ?? []).find((d: any) => d.is_primary)?.domain ??
+        b.business_domains?.[0]?.domain ??
+        null,
+      config: b.business_configurations?.[0] ?? null,
+      // Roles come from user_roles; profiles.role is deprecated.
+      owner_count: owners.length,
+      staff_count: (b.user_roles ?? []).length,
+      readiness: { has_owner: owners.length > 0, sms_sender_set: !!b.sms_sender_name },
+    }
+  })
 
   return NextResponse.json({ businesses })
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/businesses — provision a business + owner account.
+// POST /api/businesses — provision a business and its first owner.
+// Body: { business_name, name_abbreviation, slug, subdomain,
+//         owner_identifier, owner_kind: "phone"|"email",
+//         sms_sender_name?, email_from_name?, …contact/config fields }
+// The owner is found or pre-created by phone/email (no password; they sign
+// in with a code) and made owner through set_role_assignment. The slug is
+// immutable once created.
 // ---------------------------------------------------------------------------
 export async function POST(request: Request) {
   const guard = await requireOperator()
@@ -70,90 +85,71 @@ export async function POST(request: Request) {
   // --- Validate -----------------------------------------------------------
   const businessName = typeof body.business_name === "string" ? body.business_name.trim() : ""
   const nameAbbreviation = typeof body.name_abbreviation === "string" ? body.name_abbreviation.trim() : ""
-  const ownerEmail = typeof body.owner_email === "string" ? body.owner_email.trim().toLowerCase() : ""
-  const ownerPassword = typeof body.owner_password === "string" ? body.owner_password : ""
+  const slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : ""
   const subdomain = normalizeDomain(body.subdomain)
+  const owner = parseIdentifier(body.owner_kind, body.owner_identifier)
+  const smsSender = typeof body.sms_sender_name === "string" && body.sms_sender_name.trim() ? body.sms_sender_name.trim() : null
+  const emailFromName =
+    typeof body.email_from_name === "string" && body.email_from_name.trim() ? body.email_from_name.trim().slice(0, 80) : null
 
   const errors: string[] = []
   if (!businessName) errors.push("business_name is required")
   if (!nameAbbreviation) errors.push("name_abbreviation is required")
-  if (!ownerEmail || !ownerEmail.includes("@")) errors.push("a valid owner_email is required")
-  if (!ownerPassword || ownerPassword.length < 8) errors.push("owner_password must be at least 8 characters")
+  if (!SLUG_RE.test(slug)) errors.push("slug must be 3–40 characters: a-z, 0-9 and -")
   if (!subdomain) errors.push("subdomain is invalid or reserved")
+  if (!owner) errors.push("a valid owner phone or email is required")
+  if (smsSender && !SMS_SENDER_RE.test(smsSender)) errors.push("sms_sender_name must be 3–11 letters, digits or spaces")
   if (errors.length) return NextResponse.json({ error: errors.join("; ") }, { status: 400 })
 
   const supabase = createAdminClient()
 
   // --- Uniqueness checks --------------------------------------------------
-  const { data: existingDomain } = await supabase
-    .from("business_domains")
-    .select("domain")
-    .eq("domain", subdomain)
-    .maybeSingle()
+  const [{ data: existingDomain }, { data: existingSlug }] = await Promise.all([
+    supabase.from("business_domains").select("domain").eq("domain", subdomain).maybeSingle(),
+    supabase.from("businesses").select("business_id").eq("slug", slug).maybeSingle(),
+  ])
   if (existingDomain) {
     return NextResponse.json({ error: `Subdomain "${subdomain}" is already taken` }, { status: 409 })
   }
-
-  // --- Create owner auth user --------------------------------------------
-  const { data: created, error: createUserErr } = await supabase.auth.admin.createUser({
-    email: ownerEmail,
-    password: ownerPassword,
-    email_confirm: true,
-    user_metadata: { role: "owner" },
-  })
-  if (createUserErr || !created?.user) {
-    const msg = createUserErr?.message || "Failed to create owner account"
-    const status = /already been registered|already exists/i.test(msg) ? 409 : 500
-    return NextResponse.json({ error: msg }, { status })
+  if (existingSlug) {
+    return NextResponse.json({ error: `Slug "${slug}" is already taken` }, { status: 409 })
   }
-  const ownerUserId = created.user.id
 
-  // Track what we created so we can roll back on any later failure.
+  // --- Owner identity (existing account, or a new unconfirmed one) --------
+  const identity = await findOrCreateIdentity(supabase, owner as NonNullable<typeof owner>)
+  if (!identity) return NextResponse.json({ error: "Could not create the owner identity" }, { status: 500 })
+
   let businessId: string | null = null
-
   const rollback = async () => {
-    // FKs to businesses do NOT cascade for domains/config — delete in reverse.
+    // Domains and config don't cascade; user_roles does.
     if (businessId) {
       await supabase.from("business_domains").delete().eq("business_id", businessId)
       await supabase.from("business_configurations").delete().eq("business_id", businessId)
-      await supabase.from("profiles").delete().eq("business_id", businessId)
       await supabase.from("businesses").delete().eq("business_id", businessId)
     }
-    await supabase.auth.admin.deleteUser(ownerUserId)
+    if (identity.created) await supabase.auth.admin.deleteUser(identity.userId)
   }
 
   try {
-    // --- businesses -------------------------------------------------------
     const { data: biz, error: bizErr } = await supabase
       .from("businesses")
       .insert({
         business_name: businessName,
         name_abbreviation: nameAbbreviation,
+        slug,
+        sms_sender_name: smsSender,
+        email_from_name: emailFromName,
         tax_id: body.tax_id ?? null,
         address: body.address ?? null,
         phone: body.phone ?? null,
-        email: body.email ?? ownerEmail,
+        email: body.email ?? (owner?.kind === "email" ? owner.email : null),
         logo_url: body.logo_url ?? null,
       })
       .select("business_id")
       .single()
     if (bizErr || !biz) throw new Error(bizErr?.message || "Failed to create business")
-    businessId = biz.business_id
+    businessId = biz.business_id as string
 
-    // --- profiles (owner) -------------------------------------------------
-    const { error: profileErr } = await supabase.from("profiles").insert({
-      user_id: ownerUserId,
-      business_id: businessId,
-      first_name: body.owner_first_name ?? null,
-      last_name: body.owner_last_name ?? null,
-      role: "owner",
-      email: ownerEmail,
-      is_active: true,
-      created_from_admin_panel: true,
-    })
-    if (profileErr) throw new Error(profileErr.message)
-
-    // --- business_configurations -----------------------------------------
     const { error: configErr } = await supabase.from("business_configurations").insert({
       business_id: businessId,
       timezone: body.timezone ?? "Europe/Rome",
@@ -164,7 +160,6 @@ export async function POST(request: Request) {
     })
     if (configErr) throw new Error(configErr.message)
 
-    // --- business_domains (subdomain -> tenant) --------------------------
     const { error: domainErr } = await supabase.from("business_domains").insert({
       domain: subdomain,
       business_id: businessId,
@@ -173,14 +168,10 @@ export async function POST(request: Request) {
     })
     if (domainErr) throw new Error(domainErr.message)
 
-    return NextResponse.json(
-      {
-        business_id: businessId,
-        subdomain,
-        owner: { user_id: ownerUserId, email: ownerEmail },
-      },
-      { status: 201 },
-    )
+    const assigned = await assignRoleAsOperator(supabase, guard.admin.userId, businessId, identity.userId, "owner")
+    if (assigned.status !== 200) throw new Error(String(assigned.body.error ?? "owner assignment failed"))
+
+    return NextResponse.json({ business_id: businessId, slug, subdomain, owner: { user_id: identity.userId } }, { status: 201 })
   } catch (err) {
     await rollback()
     const message = err instanceof Error ? err.message : "Provisioning failed"
@@ -230,6 +221,20 @@ export async function PATCH(request: Request) {
     if ("phone" in body) bizUpdate.phone = body.phone || null
     if ("email" in body) bizUpdate.email = body.email || null
     if ("logo_url" in body) bizUpdate.logo_url = body.logo_url || null
+    if ("sms_sender_name" in body) {
+      const v = typeof body.sms_sender_name === "string" ? body.sms_sender_name.trim() : ""
+      if (v && !SMS_SENDER_RE.test(v)) {
+        return NextResponse.json({ error: "sms_sender_name must be 3–11 letters, digits or spaces" }, { status: 400 })
+      }
+      bizUpdate.sms_sender_name = v || null
+    }
+    if ("email_from_name" in body) {
+      const v = typeof body.email_from_name === "string" ? body.email_from_name.trim().slice(0, 80) : ""
+      bizUpdate.email_from_name = v || null
+    }
+    if ("slug" in body) {
+      return NextResponse.json({ error: "slug is immutable" }, { status: 400 })
+    }
     if (Object.keys(bizUpdate).length) {
       bizUpdate.updated_at = new Date().toISOString()
       const { error } = await supabase.from("businesses").update(bizUpdate).eq("business_id", businessId)
@@ -316,23 +321,6 @@ export async function PATCH(request: Request) {
           .eq("business_id", businessId)
           .eq("domain", subdomain)
         if (primErr) throw new Error(primErr.message)
-      }
-    }
-
-    // --- optional owner password reset ------------------------------------
-    if (typeof body.owner_password === "string" && body.owner_password.length > 0) {
-      if (body.owner_password.length < 8) throw new Error("owner_password must be at least 8 characters")
-      const { data: owner } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .eq("business_id", businessId)
-        .eq("role", "owner")
-        .maybeSingle()
-      if (owner?.user_id) {
-        const { error } = await supabase.auth.admin.updateUserById(owner.user_id, {
-          password: body.owner_password,
-        })
-        if (error) throw new Error(error.message)
       }
     }
 

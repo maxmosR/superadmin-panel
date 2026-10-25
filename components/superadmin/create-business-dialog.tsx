@@ -32,10 +32,10 @@ const EMPTY = {
   phone: "",
   email: "",
   subdomain: "",
-  owner_email: "",
-  owner_password: "",
-  owner_first_name: "",
-  owner_last_name: "",
+  slug: "",
+  sms_sender_name: "",
+  email_from_name: "",
+  owner_identifier: "",
   timezone: "Europe/Rome",
   currency: "EUR",
   minimum_charge: "0",
@@ -47,7 +47,7 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
   const [form, setForm] = useState({ ...EMPTY })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
-  const [success, setSuccess] = useState<{ subdomain: string; ownerEmail: string } | null>(null)
+  const [success, setSuccess] = useState<{ subdomain: string; owner: string } | null>(null)
 
   const set = (k: keyof typeof EMPTY, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -91,10 +91,11 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
           phone: form.phone || null,
           email: form.email || null,
           subdomain: form.subdomain,
-          owner_email: form.owner_email,
-          owner_password: form.owner_password,
-          owner_first_name: form.owner_first_name || null,
-          owner_last_name: form.owner_last_name || null,
+          slug: form.slug,
+          sms_sender_name: form.sms_sender_name || null,
+          email_from_name: form.email_from_name || null,
+          owner_identifier: form.owner_identifier,
+          owner_kind: form.owner_identifier.includes("@") ? "email" : "phone",
           timezone: form.timezone,
           currency: form.currency,
           minimum_charge: Number(form.minimum_charge) || 0,
@@ -105,7 +106,7 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`)
 
-      setSuccess({ subdomain: j.subdomain, ownerEmail: j.owner?.email ?? form.owner_email })
+      setSuccess({ subdomain: j.subdomain, owner: form.owner_identifier })
       onCreated()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create business")
@@ -140,10 +141,10 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
               </div>
               <div>
                 <div className="text-muted-foreground">Owner email</div>
-                <div className="font-medium">{success.ownerEmail}</div>
+                <div className="font-medium">{success.owner}</div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Share the password you set with the owner securely — it is not shown again here.
+                The owner signs in with a one-time code sent to this phone or email. There is no password.
               </p>
             </div>
             <DialogFooter>
@@ -154,7 +155,7 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
           <>
             <DialogHeader>
               <DialogTitle>Create business</DialogTitle>
-              <DialogDescription>Provision a new business, its subdomain, and the owner login.</DialogDescription>
+              <DialogDescription>Provision a new business, its slug and subdomain, and its first owner.</DialogDescription>
             </DialogHeader>
 
             {error && (
@@ -210,32 +211,53 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
 
               <Separator />
 
-              {/* Owner account */}
+              {/* Slug and branding */}
               <section className="space-y-3">
-                <h3 className="text-sm font-semibold text-muted-foreground">Owner account</h3>
+                <h3 className="text-sm font-semibold text-muted-foreground">Slug and branding</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Owner email *">
+                  <Field label="Slug *">
                     <Input
-                      type="email"
-                      value={form.owner_email}
-                      onChange={(e) => set("owner_email", e.target.value)}
+                      value={form.slug}
+                      onChange={(e) => set("slug", e.target.value.toLowerCase())}
+                      placeholder="acme"
+                      maxLength={40}
                     />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      3–40 characters: a-z, 0-9, -. Storage folders use it. It can never change.
+                    </p>
                   </Field>
-                  <Field label="Owner password *">
+                  <Field label="SMS sender name">
                     <Input
-                      type="text"
-                      value={form.owner_password}
-                      onChange={(e) => set("owner_password", e.target.value)}
-                      placeholder="min 8 characters"
+                      value={form.sms_sender_name}
+                      onChange={(e) => set("sms_sender_name", e.target.value)}
+                      placeholder="Acme"
+                      maxLength={11}
                     />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      3–11 letters, digits, spaces. Register it at OpenAPI.com first.
+                    </p>
                   </Field>
-                  <Field label="First name">
-                    <Input value={form.owner_first_name} onChange={(e) => set("owner_first_name", e.target.value)} />
-                  </Field>
-                  <Field label="Last name">
-                    <Input value={form.owner_last_name} onChange={(e) => set("owner_last_name", e.target.value)} />
+                  <Field label="Email display name">
+                    <Input value={form.email_from_name} onChange={(e) => set("email_from_name", e.target.value)} maxLength={80} />
                   </Field>
                 </div>
+              </section>
+
+              <Separator />
+
+              {/* Owner */}
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold text-muted-foreground">Owner</h3>
+                <Field label="Owner phone or email *">
+                  <Input
+                    value={form.owner_identifier}
+                    onChange={(e) => set("owner_identifier", e.target.value)}
+                    placeholder="+39 333 123 4567 or owner@example.com"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    An existing account is reused; otherwise one is created. The owner signs in with a code.
+                  </p>
+                </Field>
               </section>
 
               <Separator />
