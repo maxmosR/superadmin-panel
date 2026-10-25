@@ -7,6 +7,10 @@ Platform console for the operator: it creates and manages restaurants (`business
 - Every API route handler checks the operator itself, as its first statement: `const guard = await requireOperator(); if (guard.response) return guard.response` (`lib/require-operator.ts`). It answers `401 {"error":"unauthenticated"}` or `403 {"error":"not_operator"}`. Never create the service-role client (`lib/supabase-admin.ts`) before that check, and never rely on `proxy.ts` for it.
 - `proxy.ts` (formerly `middleware.ts`, exports `proxy`) is a convenience redirect for pages only. Pages re-check with `lookupOperator()` and redirect to `/login`.
 - Each new handler gets a case in `tests/operator-guard.test.ts` (401, 403, no service-role client).
+- Pages check too: `app/page.tsx` and `app/operators/page.tsx` call `lookupOperator()` themselves.
+- **Roles:** owners and staff are `user_roles` rows, written only through `set_role_assignment(operatorId, 'operator', …)` (`lib/roles.ts`). It refuses to leave a restaurant without an owner (`409 last_owner`). Never write `profiles.role` or `profiles.business_id` (deprecated; `tests/phase8.test.ts` greps for it), and never set passwords: an owner is an existing identity, or one pre-created unconfirmed by phone/email, who signs in with a code.
+- A restaurant's `slug` (`^[a-z0-9-]{3,40}$`, unique) is set at creation and immutable (storage folders use it). `sms_sender_name` (3–11, registered at OpenAPI.com first) and `email_from_name` are operator-only branding fields.
+- The last active operator can't be deactivated (`/api/operators`, `409 last_operator`).
 - Dependencies are exact versions, one npm lockfile (`npm ci`). Don't add `^`, `~` or `latest`. Don't enable `cacheComponents` or drop the `force-dynamic` exports.
 
 ## Shared backend (Supabase)
