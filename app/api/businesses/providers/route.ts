@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getPlatformAdmin } from "@/lib/superadmin-auth"
+import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { RATE_FIELDS, parsePhone, parseRate } from "@/lib/providers"
 
@@ -19,8 +19,8 @@ export const dynamic = "force-dynamic"
 const UUID_RE = /^[0-9a-f-]{36}$/i
 
 export async function GET(request: Request) {
-  const admin = await getPlatformAdmin()
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   const businessId = new URL(request.url).searchParams.get("business_id") ?? ""
   if (!UUID_RE.test(businessId)) return NextResponse.json({ error: "business_id is required" }, { status: 400 })
@@ -32,8 +32,8 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const admin = await getPlatformAdmin()
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   let body: Record<string, unknown>
   try {

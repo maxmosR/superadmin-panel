@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getPlatformAdmin } from "@/lib/superadmin-auth"
+import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { CALC_MODES, CODE_RE, RATE_FIELDS, parsePhone, parseRate, type CalcMode } from "@/lib/providers"
 
@@ -64,8 +64,8 @@ function toRow(body: Body, creating: boolean): Record<string, unknown> {
 }
 
 export async function GET() {
-  const admin = await getPlatformAdmin()
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -78,8 +78,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const admin = await getPlatformAdmin()
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   const body = await readJson(request)
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
@@ -104,8 +104,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const admin = await getPlatformAdmin()
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireOperator()
+  if (guard.response) return guard.response
 
   const body = await readJson(request)
   if (!body || typeof body.id !== "string") {

@@ -29,7 +29,7 @@ vi.mock("@/lib/supabase-server", () => ({
   }),
 }))
 
-import { getPlatformAdmin, lookupOperator } from "@/lib/superadmin-auth"
+import { lookupOperator } from "@/lib/superadmin-auth"
 
 let consoleError: ReturnType<typeof vi.spyOn>
 
@@ -51,7 +51,6 @@ describe("lookupOperator", () => {
   it("is unauthenticated without a session, and does not log the normal no-session case", async () => {
     state.userError = { name: "AuthSessionMissingError", message: "Auth session missing!" }
     expect(await lookupOperator()).toEqual({ status: "unauthenticated" })
-    expect(await getPlatformAdmin()).toBeNull()
     expect(consoleError).not.toHaveBeenCalled()
   })
 
@@ -72,7 +71,6 @@ describe("lookupOperator", () => {
   it("is not_operator for a user with no active platform_admins row", async () => {
     state.user = { id: "u1", email: "x@example.com" }
     expect(await lookupOperator()).toEqual({ status: "not_operator" })
-    expect(await getPlatformAdmin()).toBeNull()
     expect(consoleError).not.toHaveBeenCalled()
   })
 
@@ -97,6 +95,5 @@ describe("lookupOperator", () => {
       status: "operator",
       admin: { userId: "u1", email: "op@example.com" },
     })
-    expect(await getPlatformAdmin()).toEqual({ userId: "u1", email: "op@example.com" })
   })
 })

@@ -5,7 +5,7 @@ Platform console for the operator: it creates and manages restaurants (`business
 ## Operator access rules
 
 - Every API route handler checks the operator itself, as its first statement: `const guard = await requireOperator(); if (guard.response) return guard.response` (`lib/require-operator.ts`). It answers `401 {"error":"unauthenticated"}` or `403 {"error":"not_operator"}`. Never create the service-role client (`lib/supabase-admin.ts`) before that check, and never rely on `proxy.ts` for it.
-- `proxy.ts` (formerly `middleware.ts`, exports `proxy`) is a convenience redirect for pages only. Pages re-check with `getPlatformAdmin()` and redirect to `/login`.
+- `proxy.ts` (formerly `middleware.ts`, exports `proxy`) is a convenience redirect for pages only. Pages re-check with `lookupOperator()` and redirect to `/login`.
 - Each new handler gets a case in `tests/operator-guard.test.ts` (401, 403, no service-role client).
 - Dependencies are exact versions, one npm lockfile (`npm ci`). Don't add `^`, `~` or `latest`. Don't enable `cacheComponents` or drop the `force-dynamic` exports.
 

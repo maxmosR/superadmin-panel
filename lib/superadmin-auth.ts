@@ -59,12 +59,3 @@ export async function lookupOperator(): Promise<OperatorLookup> {
     admin: { userId: data.user_id, email: data.email ?? user.email ?? null },
   }
 }
-
-/**
- * The current request's platform admin, or null when not signed in or not an
- * active admin. Used by pages, which redirect to /login either way.
- */
-export async function getPlatformAdmin(): Promise<PlatformAdmin | null> {
-  const result = await lookupOperator()
-  return result.status === "operator" ? result.admin : null
-}
