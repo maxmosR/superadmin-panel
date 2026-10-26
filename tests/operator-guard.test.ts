@@ -23,6 +23,13 @@ import * as businessProviders from "@/app/api/businesses/providers/route"
 import * as roles from "@/app/api/businesses/roles/route"
 import * as operators from "@/app/api/operators/route"
 import * as adminNav from "@/app/api/admin-nav/route"
+import * as zones from "@/app/api/zones/route"
+import * as zonesDraft from "@/app/api/zones/draft/route"
+import * as zonesDiscard from "@/app/api/zones/draft/discard/route"
+import * as zonesTest from "@/app/api/zones/test/route"
+import * as zonesPublish from "@/app/api/zones/publish/route"
+import * as zonesRestore from "@/app/api/zones/restore/route"
+import * as zonesVersion from "@/app/api/zones/version/route"
 
 const lookup = vi.mocked(lookupOperator)
 const adminClient = vi.mocked(createAdminClient)
@@ -150,6 +157,41 @@ adminHandlers.push(
     "PATCH /api/operators",
     () => operators.PATCH(jsonRequest("PATCH", "http://localhost/api/operators", { user_id: USER, is_active: true })),
   ],
+)
+
+// Delivery zones (requests valid enough to pass input validation).
+const ZONE_PAYLOAD = {
+  origin: { lat: 44.4056, lng: 8.9463 },
+  rings: [{ radius_m: 1500, fee: 2, label: null }],
+  cut_lines: [],
+  rules: [],
+}
+adminHandlers.push(
+  ["GET /api/zones", () => zones.GET(new Request(`http://localhost/api/zones?business_id=${BIZ}`))],
+  [
+    "PUT /api/zones/draft",
+    () => zonesDraft.PUT(jsonRequest("PUT", "http://localhost/api/zones/draft", { business_id: BIZ, expected_revision: 0, ...ZONE_PAYLOAD })),
+  ],
+  [
+    "POST /api/zones/draft/discard",
+    () => zonesDiscard.POST(jsonRequest("POST", "http://localhost/api/zones/draft/discard", { business_id: BIZ, expected_revision: 1 })),
+  ],
+  [
+    "POST /api/zones/test",
+    () => zonesTest.POST(jsonRequest("POST", "http://localhost/api/zones/test", { business_id: BIZ, lat: 44.41, lng: 8.95 })),
+  ],
+  [
+    "POST /api/zones/publish",
+    () =>
+      zonesPublish.POST(
+        jsonRequest("POST", "http://localhost/api/zones/publish", { business_id: BIZ, expected_revision: 1, acknowledge_warnings: false }),
+      ),
+  ],
+  [
+    "POST /api/zones/restore",
+    () => zonesRestore.POST(jsonRequest("POST", "http://localhost/api/zones/restore", { business_id: BIZ, version: 1, expected_revision: 1 })),
+  ],
+  ["GET /api/zones/version", () => zonesVersion.GET(new Request(`http://localhost/api/zones/version?business_id=${BIZ}&version=1`))],
 )
 
 const allHandlers: Array<[string, () => Promise<Response>]> = [

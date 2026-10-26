@@ -3,6 +3,7 @@ import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { normalizeDomain } from "@/lib/domains"
 import { SLUG_RE, SMS_SENDER_RE, assignRoleAsOperator, findOrCreateIdentity, parseIdentifier } from "@/lib/roles"
+import { NO_ZONES, zoneBadges, type ZoneSetRow } from "@/lib/zones/badge"
 
 export const dynamic = "force-dynamic"
 
@@ -27,6 +28,14 @@ export async function GET() {
     .order("created_at", { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Delivery zone badges: one query for every restaurant's draft and live set.
+  const { data: zoneRows, error: zoneErr } = await supabase
+    .from("delivery_zone_sets")
+    .select("business_id, status, version, based_on_version, created_at, updated_at")
+    .in("status", ["draft", "published"])
+  if (zoneErr) console.error(JSON.stringify({ event: "zone_badges_failed", code: zoneErr.code ?? null }))
+  const badges = zoneBadges((zoneRows ?? []) as ZoneSetRow[])
 
   const businesses = (data ?? []).map((b: any) => {
     const owners = (b.user_roles ?? []).filter((r: any) => r.role === "owner")
@@ -56,6 +65,7 @@ export async function GET() {
       owner_count: owners.length,
       staff_count: (b.user_roles ?? []).length,
       readiness: { has_owner: owners.length > 0, sms_sender_set: !!b.sms_sender_name },
+      zones: badges.get(b.business_id) ?? NO_ZONES,
     }
   })
 
