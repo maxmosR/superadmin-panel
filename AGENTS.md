@@ -20,6 +20,7 @@ Platform console for the operator: it creates and manages restaurants (`business
 - Never use Supabase MCP `apply_migration` or `deploy_edge_function`, `supabase db push` or `functions deploy`, or the dashboard SQL editor to change schema, policies or functions. Read-only calls (listing migrations, SELECTs, logs) are fine.
 - All four repos read the same database: `../BirraOra-three-month-test`, `../admin-panel-shop`, `../superadmin-panel` and `../order_receiver`. Before changing or relying on a table, RLS policy, SQL function or Edge Function, grep all four for it.
 - Never log personal data (names, emails, phones, addresses, order payloads). Log ids and counts.
+- Delivery fees come only from `quote_delivery` / published zone sets; zone writes only from superadmin-panel.
 
 ## Checks
 

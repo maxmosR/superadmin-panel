@@ -24,6 +24,21 @@ Each business gets:
 | `POST /api/businesses`  | Provision a business + owner (atomic, rolls back on failure) |
 | `PATCH /api/businesses` | Update business, config, primary domain, or reset owner password |
 | `GET/POST/PATCH/DELETE /api/businesses/domains` | Manage a business' domains — add, rename, re-point, enable/disable, choose the primary |
+| `/businesses/[businessId]/zones` | Delivery zones editor: center point, rings (km → €), cut lines, per-piece fee or no delivery, address tests, publish, history |
+| `GET /api/zones?business_id=` | Business, draft and live zone sets (authored state + computed pieces) and version history |
+| `PUT /api/zones/draft` | Save the draft (`expected_revision`); returns recomputed pieces and issues. `409 draft_changed` when another window saved first |
+| `POST /api/zones/draft/discard` | Reset the draft to the live version (or delete it if nothing is live) |
+| `POST /api/zones/test` | What a point pays under the draft and the live version (same SQL core as `quote_delivery`) |
+| `POST /api/zones/publish` | Validate and publish the draft as a new immutable version (`422` with the issues when blocked) |
+| `POST /api/zones/restore` | Copy a past version into the draft |
+| `GET /api/zones/version?business_id=&version=` | One published or archived version, read-only |
+
+Delivery fees are computed only in SQL (`quote_delivery`, migration
+`20261026130000_delivery_zones.sql` in the storefront repo); the map only shows
+server results. Zone writes come only from this console. Setup for the map:
+add every operator console domain to the Google Maps key's HTTP referrers
+(with **Maps JavaScript API** and **Places API (New)** enabled on the key), and
+create a **Map ID** (Advanced Markers need one). Both env vars below are build-time.
 
 Access is checked in three independent places, and none relies on another:
 
@@ -81,6 +96,8 @@ npm run dev                  # http://localhost:3000
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon key (login + admin membership check via RLS) |
 | `SUPABASE_SERVICE_ROLE_KEY`     | **Server only** — provisioning; never exposed     |
 | `NEXT_PUBLIC_ROOT_DOMAIN`       | Tenant app root domain, for building tenant URLs  |
+| `NEXT_PUBLIC_GOOGLE_MAPS_KEY`   | Browser Maps key for the zone editor (HTTP-referrer restricted to the console's domains). Build-time |
+| `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` | Map ID for Advanced Markers in the zone editor (falls back to `DEMO_MAP_ID` in development). Build-time |
 
 ## Stack
 

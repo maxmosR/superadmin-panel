@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, LogOut, Pencil, Plus, ShieldCheck } from "lucide-react"
+import { Loader2, LogOut, MapPinned, Pencil, Plus, ShieldCheck } from "lucide-react"
 import { domainDisplayHost } from "@/lib/domains"
 import { CreateBusinessDialog } from "./create-business-dialog"
 import { EditBusinessDialog } from "./edit-business-dialog"
@@ -43,6 +43,14 @@ export interface BusinessRow {
   owner_count: number
   staff_count: number
   readiness: { has_owner: boolean; sms_sender_set: boolean }
+  /** Delivery zones: live version, and whether the draft has unpublished changes. */
+  zones: { published_version: number | null; has_draft_changes: boolean }
+}
+
+function ZonesBadge({ zones }: { zones: BusinessRow["zones"] | undefined }) {
+  if (!zones?.published_version) return <Badge variant="destructive">Not set up</Badge>
+  if (zones.has_draft_changes) return <Badge variant="outline" className="border-amber-600/50 text-amber-700">Unpublished changes</Badge>
+  return <Badge variant="secondary">Live v{zones.published_version}</Badge>
 }
 
 export function SuperAdminDashboard({
@@ -208,10 +216,19 @@ export function SuperAdminDashboard({
                           {new Date(b.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" onClick={() => setEditing(b)}>
-                            <Pencil className="mr-1 h-4 w-4" />
-                            Edit
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => setEditing(b)}>
+                              <Pencil className="mr-1 h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button variant="ghost" size="sm" asChild>
+                              <a href={`/businesses/${b.business_id}/zones`}>
+                                <MapPinned className="mr-1 h-4 w-4" />
+                                Delivery zones
+                              </a>
+                            </Button>
+                            <ZonesBadge zones={b.zones} />
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
