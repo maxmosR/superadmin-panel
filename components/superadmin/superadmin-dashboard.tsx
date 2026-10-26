@@ -101,6 +101,9 @@ export function SuperAdminDashboard({
             <Button variant="ghost" size="sm" asChild>
               <a href="/operators">Operators</a>
             </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <a href="/features">Admin sections</a>
+            </Button>
             <Button variant="outline" size="sm" onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
               Sign out

@@ -22,6 +22,7 @@ import * as providers from "@/app/api/providers/route"
 import * as businessProviders from "@/app/api/businesses/providers/route"
 import * as roles from "@/app/api/businesses/roles/route"
 import * as operators from "@/app/api/operators/route"
+import * as adminNav from "@/app/api/admin-nav/route"
 
 const lookup = vi.mocked(lookupOperator)
 const adminClient = vi.mocked(createAdminClient)
@@ -140,6 +141,11 @@ adminHandlers.push(
     () => roles.DELETE(jsonRequest("DELETE", "http://localhost/api/businesses/roles", { business_id: BIZ, user_id: USER })),
   ],
   ["GET /api/operators", () => operators.GET()],
+  ["GET /api/admin-nav", () => adminNav.GET()],
+  [
+    "PUT /api/admin-nav",
+    () => adminNav.PUT(jsonRequest("PUT", "http://localhost/api/admin-nav", { business_id: BIZ, hidden_items: ["scan"] })),
+  ],
   [
     "PATCH /api/operators",
     () => operators.PATCH(jsonRequest("PATCH", "http://localhost/api/operators", { user_id: USER, is_active: true })),
