@@ -184,6 +184,15 @@ export function ZoneMap(props: ZoneMapProps) {
           if (live.current.step === "test") live.current.onMapClick({ lat: e.latLng.lat(), lng: e.latLng.lng() })
         })
 
+        // Terra Draw attaches to the map's inner layers, which exist only after
+        // the first render: start it on the first "idle", not right away.
+        await new Promise<void>((resolve) => google.maps.event.addListenerOnce(map, "idle", () => resolve()))
+        if (cancelled) return
+        if (!map.getDiv().querySelector('div[style*="z-index: 3;"]')) {
+          setError("The map loaded, but drawing could not attach to it. Reload the page.")
+          return
+        }
+
         const draw = new TerraDraw({
           adapter: new TerraDrawGoogleMapsAdapter({ lib: google.maps, map, coordinatePrecision: 9, isolatedData: true }),
           modes: [
