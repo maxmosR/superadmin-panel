@@ -23,6 +23,11 @@ export function isValidFee(v: unknown): v is number {
   return isNum(v) && v >= 0 && v <= ZONE_LIMITS.maxFee && Math.abs(Math.round(v * 100) - v * 100) < 1e-6
 }
 
+/** A ring's minimum order in euros: 0–9999.99, at most 2 decimals (0 = none). */
+export function isValidMinOrder(v: unknown): v is number {
+  return isNum(v) && v >= 0 && v <= ZONE_LIMITS.maxMinOrder && Math.abs(Math.round(v * 100) - v * 100) < 1e-6
+}
+
 /** Non-negative integer (draft revision). */
 export function parseRevision(v: unknown): number | null {
   return Number.isInteger(v) && (v as number) >= 0 ? (v as number) : null
@@ -62,15 +67,18 @@ export function parseDraftPayload(body: unknown): PayloadCheck {
   const seen = new Set<number>()
   for (const [i, r] of b.rings.entries()) {
     if (!r || typeof r !== "object") return bad(`rings[${i}]`)
-    const { radius_m, fee, label } = r as Record<string, unknown>
+    const { radius_m, fee, min_order, label } = r as Record<string, unknown>
     if (!Number.isInteger(radius_m) || (radius_m as number) < ZONE_LIMITS.minRadiusM || (radius_m as number) > ZONE_LIMITS.maxRadiusM || seen.has(radius_m as number)) {
       return bad(`rings[${i}].radius_m`)
     }
     seen.add(radius_m as number)
     if (!isValidFee(fee)) return bad(`rings[${i}].fee`)
+    // Absent or null (files exported before minimums existed): no minimum.
+    const minOrder = min_order === undefined || min_order === null ? 0 : min_order
+    if (!isValidMinOrder(minOrder)) return bad(`rings[${i}].min_order`)
     const l = parseLabel(label)
     if (l === undefined) return bad(`rings[${i}].label`)
-    rings.push({ radius_m: radius_m as number, fee, label: l })
+    rings.push({ radius_m: radius_m as number, fee, min_order: minOrder, label: l })
   }
 
   const rawLines = b.cut_lines ?? []

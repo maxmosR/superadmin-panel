@@ -98,7 +98,7 @@ export function RingsStep({
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Each ring delivers up to its distance for its fee. Drag a ring&apos;s dot on the map to change its distance.
+        Each ring delivers up to its distance for its fee, with an optional minimum order. Drag a ring&apos;s dot on the map to change its distance.
       </p>
       <div className="space-y-2">
         {rings.map((r) => {
@@ -141,6 +141,19 @@ export function RingsStep({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
+              <div className="mt-2 flex items-center gap-2 text-sm">
+                <span className="shrink-0">min. order €</span>
+                <Input
+                  className="h-8 w-24"
+                  inputMode="decimal"
+                  placeholder="none"
+                  value={r.minOrder}
+                  aria-invalid={!!e.minOrder}
+                  aria-label="Minimum order in euros"
+                  disabled={readOnly}
+                  onChange={(ev) => setRow(r.key, { minOrder: ev.target.value })}
+                />
+              </div>
               <Input
                 className="mt-2 h-8"
                 placeholder="Label (optional)"
@@ -149,7 +162,11 @@ export function RingsStep({
                 disabled={readOnly}
                 onChange={(ev) => setRow(r.key, { label: ev.target.value })}
               />
-              {(e.km || e.fee) && <p className="mt-1 text-xs text-destructive">{[e.km && `Distance: ${e.km}`, e.fee && `Fee: ${e.fee}`].filter(Boolean).join(" · ")}</p>}
+              {(e.km || e.fee || e.minOrder) && (
+                <p className="mt-1 text-xs text-destructive">
+                  {[e.km && `Distance: ${e.km}`, e.fee && `Fee: ${e.fee}`, e.minOrder && `Min. order: ${e.minOrder}`].filter(Boolean).join(" · ")}
+                </p>
+              )}
             </div>
           )
         })}
@@ -162,14 +179,15 @@ export function RingsStep({
           edit((s) => {
             const maxKm = Math.max(0, ...s.rings.map((r) => parseKm(r.km) ?? 0)) / 1000
             const fee = s.rings.length ? (parseEuro(s.rings[s.rings.length - 1].fee) ?? 0) + 1 : 2
-            return { ...s, rings: [...s.rings, { key: newId(), km: Math.min(50, maxKm + 1.5).toFixed(1), fee: feeInput(fee), label: "" }] }
+            const minOrder = s.rings.length ? s.rings[s.rings.length - 1].minOrder : ""
+            return { ...s, rings: [...s.rings, { key: newId(), km: Math.min(50, maxKm + 1.5).toFixed(1), fee: feeInput(fee), minOrder, label: "" }] }
           })
         }
       >
         <Plus className="mr-1 h-4 w-4" /> Add ring
       </Button>
       <p className="text-xs text-muted-foreground">
-        Distances 0.1–50 km (one decimal). Fees in euros, e.g. 3,50 or 3.50. A blank fee is never saved as €0. A point exactly on a ring&apos;s edge belongs to the inner ring.
+        Distances 0.1–50 km (one decimal). Fees in euros, e.g. 3,50 or 3.50. A blank fee is never saved as €0. The minimum order is the products subtotal without delivery; leave it blank for none. The restaurant&apos;s own minimum still applies, so the higher one counts. A point exactly on a ring&apos;s edge belongs to the inner ring.
       </p>
     </div>
   )
@@ -292,6 +310,7 @@ export function PiecesStep({
             <TableRow>
               <TableHead>Ring</TableHead>
               <TableHead>Fee</TableHead>
+              <TableHead>Min. order</TableHead>
               <TableHead>State</TableHead>
               <TableHead className="text-right">Area</TableHead>
             </TableRow>
@@ -312,6 +331,7 @@ export function PiecesStep({
                     {p.ring_index}
                   </TableCell>
                   <TableCell>{p.deliverable ? formatEuro(p.fee) : "—"}</TableCell>
+                  <TableCell>{p.deliverable && p.min_order > 0 ? formatEuro(p.min_order) : "—"}</TableCell>
                   <TableCell>
                     <div>{pieceState(p)}</div>
                     {p.label && <div className="text-xs text-muted-foreground">{p.label}</div>}

@@ -153,12 +153,14 @@ export function PublishStep(props: {
             {Array.from({ length: Math.max(draftRings.length, published?.rings.length ?? 0) }).map((_, i) => {
               const dr = draftRings[i]
               const lr = published?.rings[i]
-              const diff = !dr || !lr || dr.radius_m !== lr.radius_m || dr.fee !== lr.fee
+              const diff = !dr || !lr || dr.radius_m !== lr.radius_m || dr.fee !== lr.fee || (dr.min_order ?? 0) !== (lr.min_order ?? 0)
+              const ring = (r: { radius_m: number; fee: number; min_order?: number }) =>
+                `${formatKm(r.radius_m)} km · ${formatEuro(r.fee)}${r.min_order ? ` · min. ${formatEuro(r.min_order)}` : ""}`
               return (
                 <tr key={i} className={diff ? "font-medium" : ""}>
                   <td>{i + 1}</td>
-                  <td>{dr ? `${formatKm(dr.radius_m)} km · ${formatEuro(dr.fee)}` : "—"}</td>
-                  <td>{lr ? `${formatKm(lr.radius_m)} km · ${formatEuro(lr.fee)}` : "—"}</td>
+                  <td>{dr ? ring(dr) : "—"}</td>
+                  <td>{lr ? ring(lr) : "—"}</td>
                 </tr>
               )
             })}

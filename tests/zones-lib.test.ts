@@ -148,7 +148,7 @@ describe("autosave queue", () => {
 
 const VALID: DraftPayload = {
   origin: { lat: 44.4056, lng: 8.9463 },
-  rings: [{ radius_m: 1500, fee: 2, label: null }],
+  rings: [{ radius_m: 1500, fee: 2, min_order: 15, label: null }],
   cut_lines: [{ id: null, label: "river", points: [{ lat: 44.4, lng: 8.95 }, { lat: 44.41, lng: 8.95 }] }],
   rules: [{ id: null, anchor: { lat: 44.405, lng: 8.96 }, mode: "excluded", fee: null, label: null }],
 }
@@ -161,6 +161,16 @@ describe("import JSON", () => {
   })
   it("accepts a bare payload", () => {
     expect(parseImportJson(JSON.stringify({ origin: VALID.origin, rings: VALID.rings })).ok).toBe(true)
+  })
+  it("reads files from before minimums as no minimum, refuses bad ones", () => {
+    const old = parseImportJson(JSON.stringify({ origin: VALID.origin, rings: [{ radius_m: 1500, fee: 2 }] }))
+    expect(old.ok && old.payload.rings[0].min_order).toBe(0)
+    for (const min_order of [-1, 1.234, "15", 10_000]) {
+      expect(parseImportJson(JSON.stringify({ origin: VALID.origin, rings: [{ radius_m: 1500, fee: 2, min_order }] }))).toEqual({
+        ok: false,
+        error: "Invalid field: rings[0].min_order",
+      })
+    }
   })
   it("refuses broken files with a reason", () => {
     expect(parseImportJson("{")).toEqual({ ok: false, error: "The file is not valid JSON." })
@@ -178,19 +188,19 @@ describe("import JSON", () => {
 })
 
 describe("editor state", () => {
-  const state = (rings: Array<[string, string]>): EditorState => ({
+  const state = (rings: Array<[string, string] | [string, string, string]>): EditorState => ({
     origin: { lat: 44.4, lng: 8.9 },
-    rings: rings.map(([km, fee], i) => ({ key: `r${i}`, km, fee, label: "" })),
+    rings: rings.map(([km, fee, minOrder = ""], i) => ({ key: `r${i}`, km, fee, minOrder, label: "" })),
     cut_lines: [],
     rules: [],
   })
   it("builds the payload in metres and euros, sorted by distance", () => {
-    const r = buildPayload(state([["2,5", "4"], ["1.5", "2,00"]]))
+    const r = buildPayload(state([["2,5", "4", "20"], ["1.5", "2,00", " "]]))
     expect(r).toEqual({
       ok: true,
       payload: {
         origin: { lat: 44.4, lng: 8.9 },
-        rings: [{ radius_m: 1500, fee: 2, label: null }, { radius_m: 2500, fee: 4, label: null }],
+        rings: [{ radius_m: 1500, fee: 2, min_order: 0, label: null }, { radius_m: 2500, fee: 4, min_order: 20, label: null }],
         cut_lines: [],
         rules: [],
       },
@@ -203,6 +213,11 @@ describe("editor state", () => {
       r0: { km: "Duplicate distance" },
       r1: { km: "Duplicate distance" },
     })
+  })
+  it("a blank minimum is none; a bad one blocks the save", () => {
+    expect(ringErrors(state([["1.5", "2", "12,50"], ["3", "4", ""]]).rings)).toEqual({})
+    expect(ringErrors(state([["1.5", "2", "abc"]]).rings)).toEqual({ r0: { minOrder: "0–9999.99, two decimals, or blank" } })
+    expect(buildPayload(state([["1.5", "2", "1.234"]])).ok).toBe(false)
   })
   it("sorts rows by distance, invalid ones last", () => {
     expect(sortRings(state([["x", "1"], ["5", "6"], ["1.5", "2"]]).rings).map((r) => r.km)).toEqual(["1.5", "5", "x"])

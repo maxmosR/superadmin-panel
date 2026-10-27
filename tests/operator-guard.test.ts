@@ -162,7 +162,7 @@ adminHandlers.push(
 // Delivery zones (requests valid enough to pass input validation).
 const ZONE_PAYLOAD = {
   origin: { lat: 44.4056, lng: 8.9463 },
-  rings: [{ radius_m: 1500, fee: 2, label: null }],
+  rings: [{ radius_m: 1500, fee: 2, min_order: 0, label: null }],
   cut_lines: [],
   rules: [],
 }

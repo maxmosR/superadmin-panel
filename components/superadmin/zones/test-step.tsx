@@ -30,7 +30,7 @@ export function quoteSummary(q: QuoteResult | null): string {
   if (!q) return "—"
   switch (q.status) {
     case "ok":
-      return formatEuro(q.fee)
+      return q.min_order ? `${formatEuro(q.fee)} · min. ${formatEuro(q.min_order)}` : formatEuro(q.fee)
     case "excluded_area":
       return "not delivered here"
     case "outside_area":

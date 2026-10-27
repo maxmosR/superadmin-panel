@@ -9,6 +9,8 @@ export type RuleMode = "ring_fee" | "custom_fee" | "excluded"
 export interface RingInput {
   radius_m: number
   fee: number
+  /** Minimum products subtotal in euros for delivery into this ring (delivery excluded). 0 = none. */
+  min_order: number
   label: string | null
 }
 
@@ -48,6 +50,8 @@ export interface PieceProperties {
   ring_index: number
   radius_m: number
   fee: number
+  /** The ring's minimum order (rules don't change it). */
+  min_order: number
   deliverable: boolean
   rule_id: string | null
   label: string | null
@@ -115,6 +119,9 @@ export interface QuoteResult {
   radius_m: number | null
   label: string | null
   distance_m: number | null
+  /** Ring minimum order; null unless deliverable. */
+  min_order: number | null
+  min_order_cents: number | null
 }
 
 export interface ZoneVersionRow {
@@ -157,6 +164,7 @@ export const ZONE_LIMITS = {
   minRadiusM: 100,
   maxRadiusM: 50_000,
   maxFee: 999.99,
+  maxMinOrder: 9999.99,
   maxLabel: 80,
   /** Center moves beyond this ask for confirmation (and warn at publish). */
   originMovedM: 200,

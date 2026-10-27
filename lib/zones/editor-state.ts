@@ -1,6 +1,6 @@
 // The editor's authored state (what the operator typed and drew), and its
 // conversion to the save payload. Pure functions: unit-tested in node.
-import { feeInput, formatKm, parseEuro, parseKm } from "./units"
+import { feeInput, formatKm, minOrderInput, parseEuro, parseKm, parseMinOrder } from "./units"
 import { parseDraftPayload } from "./validate"
 import type { CutLineInput, DraftPayload, LatLng, RuleInput, ZoneSetView } from "./types"
 
@@ -9,6 +9,8 @@ export interface RingRow {
   key: string
   km: string
   fee: string
+  /** Blank = no minimum. */
+  minOrder: string
   label: string
 }
 
@@ -36,7 +38,7 @@ export function newId(): string {
 export function stateFromView(view: ZoneSetView): EditorState {
   return {
     origin: view.origin,
-    rings: view.rings.map((r) => ({ key: r.id, km: formatKm(r.radius_m), fee: feeInput(r.fee), label: r.label ?? "" })),
+    rings: view.rings.map((r) => ({ key: r.id, km: formatKm(r.radius_m), fee: feeInput(r.fee), minOrder: minOrderInput(r.min_order ?? 0), label: r.label ?? "" })),
     cut_lines: view.cut_lines.map((c) => ({ id: c.id, label: c.label, points: c.points })),
     rules: view.rules.map((u) => ({ id: u.id, anchor: u.anchor, mode: u.mode, fee: u.fee, label: u.label })),
   }
@@ -45,15 +47,15 @@ export function stateFromView(view: ZoneSetView): EditorState {
 export function stateFromPayload(p: DraftPayload): EditorState {
   return {
     origin: p.origin,
-    rings: p.rings.map((r) => ({ key: newId(), km: formatKm(r.radius_m), fee: feeInput(r.fee), label: r.label ?? "" })),
+    rings: p.rings.map((r) => ({ key: newId(), km: formatKm(r.radius_m), fee: feeInput(r.fee), minOrder: minOrderInput(r.min_order), label: r.label ?? "" })),
     cut_lines: p.cut_lines.map((c) => ({ ...c, id: c.id ?? newId() })),
     rules: p.rules.map((u) => ({ ...u, id: u.id ?? newId() })),
   }
 }
 
-export type RingFieldErrors = Record<string, { km?: string; fee?: string }>
+export type RingFieldErrors = Record<string, { km?: string; fee?: string; minOrder?: string }>
 
-/** Per-row problems: invalid km, invalid or blank fee, duplicate distance. */
+/** Per-row problems: invalid km, invalid or blank fee, invalid minimum, duplicate distance. */
 export function ringErrors(rings: RingRow[]): RingFieldErrors {
   const errors: RingFieldErrors = {}
   const count = new Map<number, number>()
@@ -62,12 +64,13 @@ export function ringErrors(rings: RingRow[]): RingFieldErrors {
     if (m !== null) count.set(m, (count.get(m) ?? 0) + 1)
   }
   for (const r of rings) {
-    const e: { km?: string; fee?: string } = {}
+    const e: { km?: string; fee?: string; minOrder?: string } = {}
     const m = parseKm(r.km)
     if (m === null) e.km = "0.1–50 km, one decimal"
     else if ((count.get(m) ?? 0) > 1) e.km = "Duplicate distance"
     if (parseEuro(r.fee) === null) e.fee = r.fee.trim() === "" ? "Required" : "0–999.99, two decimals"
-    if (e.km || e.fee) errors[r.key] = e
+    if (parseMinOrder(r.minOrder) === null) e.minOrder = "0–9999.99, two decimals, or blank"
+    if (e.km || e.fee || e.minOrder) errors[r.key] = e
   }
   return errors
 }
@@ -91,6 +94,7 @@ export function buildPayload(state: EditorState): BuildResult {
     rings: sortRings(state.rings).map((r) => ({
       radius_m: parseKm(r.km) as number,
       fee: parseEuro(r.fee) as number,
+      min_order: parseMinOrder(r.minOrder) as number,
       label: r.label.trim() || null,
     })),
     cut_lines: state.cut_lines.map((c) => ({ id: c.id, label: c.label?.trim() || null, points: c.points })),

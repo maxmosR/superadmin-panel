@@ -43,7 +43,7 @@ const json = (body: unknown, method = "POST") =>
   new Request("http://localhost/x", { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
 const PAYLOAD = {
   origin: { lat: 44.4056, lng: 8.9463 },
-  rings: [{ radius_m: 1500, fee: 2, label: null }, { radius_m: 2500, fee: 4, label: "outer" }],
+  rings: [{ radius_m: 1500, fee: 2, min_order: 0, label: null }, { radius_m: 2500, fee: 4, min_order: 20, label: "outer" }],
   cut_lines: [{ id: null, label: "river", points: [{ lat: 44.4, lng: 8.95 }, { lat: 44.41, lng: 8.95 }] }],
   rules: [{ id: null, anchor: { lat: 44.405, lng: 8.96 }, mode: "custom_fee", fee: 5, label: null }],
 }
@@ -187,6 +187,7 @@ describe("invalid bodies get 400 before any RPC", () => {
     ["save: no revision", () => draft.PUT(json({ business_id: BIZ, ...PAYLOAD }, "PUT"))],
     ["save: negative fee", () => draft.PUT(json({ business_id: BIZ, expected_revision: 0, ...PAYLOAD, rings: [{ radius_m: 1500, fee: -1 }] }, "PUT"))],
     ["save: 3 decimals", () => draft.PUT(json({ business_id: BIZ, expected_revision: 0, ...PAYLOAD, rings: [{ radius_m: 1500, fee: 2.005 }] }, "PUT"))],
+    ["save: bad minimum order", () => draft.PUT(json({ business_id: BIZ, expected_revision: 0, ...PAYLOAD, rings: [{ radius_m: 1500, fee: 2, min_order: -5 }] }, "PUT"))],
     ["save: duplicate radius", () => draft.PUT(json({ business_id: BIZ, expected_revision: 0, ...PAYLOAD, rings: [{ radius_m: 1500, fee: 2 }, { radius_m: 1500, fee: 3 }] }, "PUT"))],
     ["save: lat out of range", () => draft.PUT(json({ business_id: BIZ, expected_revision: 0, ...PAYLOAD, origin: { lat: 95, lng: 8 } }, "PUT"))],
     ["save: one-point line", () => draft.PUT(json({ business_id: BIZ, expected_revision: 0, ...PAYLOAD, cut_lines: [{ id: null, label: null, points: [{ lat: 44, lng: 8 }] }] }, "PUT"))],

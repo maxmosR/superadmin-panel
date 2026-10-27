@@ -21,6 +21,22 @@ export function parseEuro(text: string): number | null {
   return Math.round(Number(t) * 100) / 100
 }
 
+/**
+ * A ring's minimum order typed in euros ("15", "12,50"), at most two
+ * decimals, up to 9999.99. Blank means no minimum (0). Null when invalid.
+ */
+export function parseMinOrder(text: string): number | null {
+  const t = text.trim().replace(/^€\s*/, "").replace(",", ".")
+  if (t === "") return 0
+  if (!/^\d{1,4}(\.\d{1,2})?$/.test(t)) return null
+  return Math.round(Number(t) * 100) / 100
+}
+
+/** 15 -> "15.00", 0 -> "" (blank = no minimum) */
+export function minOrderInput(v: number): string {
+  return v > 0 ? v.toFixed(2) : ""
+}
+
 /** 1500 -> "1.5" */
 export function formatKm(m: number): string {
   return (Math.round(m / 100) / 10).toFixed(1)
