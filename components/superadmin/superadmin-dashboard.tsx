@@ -35,11 +35,15 @@ export interface BusinessRow {
     minimum_charge: number | null
     max_concurrent_appointments: number | null
     open_days_and_hours: unknown | null
+    /** {"card": bool, "cash": bool} */
+    payment_methods?: { card?: boolean; cash?: boolean } | null
   } | null
   /** Immutable tenant key (storage folders). */
   slug: string
   sms_sender_name: string | null
   email_from_name: string | null
+  /** Where the new-order email goes (set_order_settings). */
+  order_notification_email: string | null
   /** From user_roles. */
   owner_count: number
   staff_count: number

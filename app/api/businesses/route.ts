@@ -19,9 +19,9 @@ export async function GET() {
     .from("businesses")
     .select(
       "business_id, slug, business_name, name_abbreviation, tax_id, address, phone, email, logo_url, " +
-        "sms_sender_name, email_from_name, created_at, deleted, " +
+        "sms_sender_name, email_from_name, order_notification_email, created_at, deleted, " +
         "business_domains(domain, is_primary, is_active, label), " +
-        "business_configurations(timezone, currency, minimum_charge, max_concurrent_appointments, open_days_and_hours), " +
+        "business_configurations(timezone, currency, minimum_charge, max_concurrent_appointments, open_days_and_hours, payment_methods), " +
         "user_roles(user_id, role)",
     )
     .eq("deleted", false)
@@ -58,6 +58,7 @@ export async function GET() {
       logo_url: b.logo_url,
       sms_sender_name: b.sms_sender_name ?? null,
       email_from_name: b.email_from_name ?? null,
+      order_notification_email: b.order_notification_email ?? null,
       created_at: b.created_at,
       domains: (b.business_domains ?? []).slice().sort((x: any, y: any) =>
         x.is_primary === y.is_primary ? String(x.domain).localeCompare(String(y.domain)) : x.is_primary ? -1 : 1,
