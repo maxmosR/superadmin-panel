@@ -21,6 +21,7 @@ import * as me from "@/app/api/me/route"
 import * as providers from "@/app/api/providers/route"
 import * as businessProviders from "@/app/api/businesses/providers/route"
 import * as roles from "@/app/api/businesses/roles/route"
+import * as payoutAccount from "@/app/api/businesses/payout-account/route"
 import * as operators from "@/app/api/operators/route"
 import * as adminNav from "@/app/api/admin-nav/route"
 import * as zones from "@/app/api/zones/route"
@@ -197,6 +198,12 @@ adminHandlers.push(
 const allHandlers: Array<[string, () => Promise<Response>]> = [
   ...adminHandlers,
   ["GET /api/me", () => me.GET()],
+  // Forwards to the operator-create-payout-account Edge Function with the
+  // operator's own JWT: never a service-role client.
+  [
+    "POST /api/businesses/payout-account",
+    () => payoutAccount.POST(jsonRequest("POST", "http://localhost/api/businesses/payout-account", { business_id: BIZ })),
+  ],
 ]
 
 beforeEach(() => {

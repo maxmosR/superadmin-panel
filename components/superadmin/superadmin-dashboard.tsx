@@ -13,6 +13,7 @@ import { domainDisplayHost } from "@/lib/domains"
 import { CreateBusinessDialog } from "./create-business-dialog"
 import { EditBusinessDialog } from "./edit-business-dialog"
 import { ProvidersManager } from "./providers-manager"
+import { PayoutAccountCell, type PayoutAccountSummary } from "./payout-account-cell"
 
 export interface BusinessRow {
   business_id: string
@@ -45,6 +46,8 @@ export interface BusinessRow {
   readiness: { has_owner: boolean; sms_sender_set: boolean }
   /** Delivery zones: live version, and whether the draft has unpublished changes. */
   zones: { published_version: number | null; has_draft_changes: boolean }
+  /** Stripe connected account (Part A), null until created. */
+  payout_account: PayoutAccountSummary | null
 }
 
 function ZonesBadge({ zones }: { zones: BusinessRow["zones"] | undefined }) {
@@ -162,6 +165,7 @@ export function SuperAdminDashboard({
                       <TableHead>Business</TableHead>
                       <TableHead>Domains</TableHead>
                       <TableHead>Staff</TableHead>
+                      <TableHead>Payout account</TableHead>
                       <TableHead>Currency</TableHead>
                       <TableHead>Created</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -210,6 +214,9 @@ export function SuperAdminDashboard({
                             {!b.readiness?.has_owner && <span className="rounded-full border border-amber-600/40 px-1.5 text-amber-700">no owner</span>}
                             {!b.readiness?.sms_sender_set && <span className="rounded-full border border-amber-600/40 px-1.5 text-amber-700">no SMS sender</span>}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <PayoutAccountCell businessId={b.business_id} account={b.payout_account ?? null} onCreated={load} />
                         </TableCell>
                         <TableCell className="text-sm">{b.config?.currency ?? "—"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">

@@ -37,6 +37,13 @@ export async function GET() {
   if (zoneErr) console.error(JSON.stringify({ event: "zone_badges_failed", code: zoneErr.code ?? null }))
   const badges = zoneBadges((zoneRows ?? []) as ZoneSetRow[])
 
+  // Stripe connected accounts (no secrets in the table).
+  const { data: payoutRows, error: payoutErr } = await supabase
+    .from("payout_accounts")
+    .select("business_id, stripe_account_id, charges_enabled, payouts_enabled, details_submitted, requirements")
+  if (payoutErr) console.error(JSON.stringify({ event: "payout_accounts_failed", code: payoutErr.code ?? null }))
+  const payouts = new Map<string, any>((payoutRows ?? []).map((p: any) => [p.business_id, p]))
+
   const businesses = (data ?? []).map((b: any) => {
     const owners = (b.user_roles ?? []).filter((r: any) => r.role === "owner")
     return {
@@ -66,10 +73,24 @@ export async function GET() {
       staff_count: (b.user_roles ?? []).length,
       readiness: { has_owner: owners.length > 0, sms_sender_set: !!b.sms_sender_name },
       zones: badges.get(b.business_id) ?? NO_ZONES,
+      payout_account: payoutSummary(payouts.get(b.business_id)),
     }
   })
 
   return NextResponse.json({ businesses })
+}
+
+function payoutSummary(p: any) {
+  if (!p) return null
+  const req = (p.requirements ?? {}) as { currently_due?: unknown[]; past_due?: unknown[] }
+  const due = new Set([...(req.currently_due ?? []), ...(req.past_due ?? [])])
+  return {
+    stripe_account_id: p.stripe_account_id as string,
+    charges_enabled: !!p.charges_enabled,
+    payouts_enabled: !!p.payouts_enabled,
+    details_submitted: !!p.details_submitted,
+    outstanding_requirements: due.size,
+  }
 }
 
 // ---------------------------------------------------------------------------
