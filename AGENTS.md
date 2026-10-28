@@ -13,6 +13,11 @@ Platform console for the operator: it creates and manages restaurants (`business
 - The last active operator can't be deactivated (`/api/operators`, `409 last_operator`).
 - Dependencies are exact versions, one npm lockfile (`npm ci`). Don't add `^`, `~` or `latest`. Don't enable `cacheComponents` or drop the `force-dynamic` exports.
 
+## Payments
+
+- Each restaurant's Stripe Connect account is created from the businesses table (Payout account cell → `POST /api/businesses/payout-account` → the `operator-create-payout-account` Edge Function with the operator's own session). The console holds no Stripe key; the platform key lives only in Edge secrets. Never store per-restaurant Stripe keys.
+- Order email and payment methods (card / cash on delivery, at least one) are set through `PUT /api/businesses/order-settings` (`set_order_settings` as the operator), never by writing the columns directly.
+
 ## Shared backend (Supabase)
 
 - The only backend source is the storefront repo `../BirraOra-three-month-test`, in `supabase/`: migrations, Edge Functions, function auth (`supabase/config.toml`) and `pg_cron` jobs. This repo has no `supabase/` folder. Don't add one, and don't copy migrations or functions here.
