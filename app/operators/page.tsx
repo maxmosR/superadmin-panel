@@ -8,5 +8,5 @@ export default async function OperatorsPage() {
   // The page checks the operator itself; proxy.ts is only a convenience.
   const result = await lookupOperator()
   if (result.status !== "operator") redirect("/login")
-  return <OperatorsManager />
+  return <OperatorsManager adminEmail={result.admin.email} />
 }

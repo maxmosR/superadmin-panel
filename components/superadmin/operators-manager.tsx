@@ -1,11 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
+import { ConsoleShell, PageHead } from "./console-shell"
 
 interface Operator {
   user_id: string
@@ -16,7 +16,7 @@ interface Operator {
 
 // Platform operators: activate / deactivate. The API refuses to deactivate
 // the last active operator.
-export function OperatorsManager() {
+export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | null }) {
   const [operators, setOperators] = useState<Operator[]>([])
   const [me, setMe] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -53,13 +53,8 @@ export function OperatorsManager() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Operators</h1>
-        <Button asChild variant="outline">
-          <Link href="/">Back to businesses</Link>
-        </Button>
-      </div>
+    <ConsoleShell adminEmail={adminEmail} width="narrow">
+      <PageHead title="Operators" description="BirraOra staff who can use this console. The last active operator can't be deactivated." />
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
@@ -67,11 +62,16 @@ export function OperatorsManager() {
       )}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{loading ? "Loading…" : `${operators.length} operator(s)`}</CardTitle>
+          <CardTitle className="text-base">
+            {loading ? "Loading…" : `${operators.length} operator${operators.length === 1 ? "" : "s"}`}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <div className="flex items-center py-6 text-sm text-muted-foreground" role="status">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              Loading operators…
+            </div>
           ) : (
             <ul className="divide-y">
               {operators.map((op) => (
@@ -92,6 +92,6 @@ export function OperatorsManager() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </ConsoleShell>
   )
 }

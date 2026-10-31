@@ -22,7 +22,7 @@
   --destructive: oklch(0.6 0.25 15);
   --destructive-foreground: oklch(0.98 0 0);
   --border: oklch(0.9 0 0);
-  --input: oklch(0.96 0 0);
+  --input: oklch(0.88 0 0);
   --ring: oklch(0.65 0.2 250);
   --success: oklch(0.6 0.2 140);
   --warning: oklch(0.7 0.2 60);
@@ -126,6 +126,10 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  /* Reserve the scrollbar's space so the header doesn't shift between short and long pages. */
+  html {
+    scrollbar-gutter: stable;
   }
   body {
     @apply bg-background text-foreground;

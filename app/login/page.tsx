@@ -68,8 +68,8 @@ export default function SuperAdminLoginPage() {
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
             <ShieldCheck className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle className="text-xl sm:text-2xl font-bold">Super Admin</CardTitle>
-          <CardDescription className="text-sm">Platform administration console</CardDescription>
+          <CardTitle className="text-xl sm:text-2xl font-bold">Operator console</CardTitle>
+          <CardDescription className="text-sm">BirraOra staff only</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">

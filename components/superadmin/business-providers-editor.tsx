@@ -85,7 +85,7 @@ export function BusinessProvidersEditor({ businessId }: { businessId: string }) 
   return (
     <section className="space-y-3">
       <div>
-        <h3 className="text-sm font-semibold text-muted-foreground">Providers</h3>
+        <h3 className="text-sm font-semibold">Providers</h3>
         <p className="text-xs text-muted-foreground">
           Channels this business can book invoices on, and its rates. Empty fields use the provider default.
         </p>

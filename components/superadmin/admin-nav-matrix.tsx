@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
+import { ConsoleShell, PageHead } from "./console-shell"
 
 interface NavItem {
   key: string
@@ -23,7 +23,7 @@ interface BusinessRow {
 // Rows: restaurants. Columns: admin-panel sections. A checked box means the
 // restaurant's admin panel shows that section. Every click saves at once
 // (PUT /api/admin-nav); the restaurant sees it on its next page load.
-export function AdminNavMatrix() {
+export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | null }) {
   const [items, setItems] = useState<NavItem[]>([])
   const [rows, setRows] = useState<BusinessRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -88,20 +88,11 @@ export function AdminNavMatrix() {
   }, [rows, query])
 
   return (
-    <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Admin panel sections</h1>
-          <p className="text-sm text-muted-foreground">
-            Checked = the restaurant&apos;s admin panel shows the section. Unchecked sections are left out of the menu,
-            their pages answer 404 and their code is not sent to that restaurant. Changes save immediately and apply on the
-            restaurant&apos;s next page load.
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href="/">Back to businesses</Link>
-        </Button>
-      </div>
+    <ConsoleShell adminEmail={adminEmail}>
+      <PageHead
+        title="Admin panel sections"
+        description="Which sections each restaurant's admin panel shows. Unchecked sections leave the menu, their pages answer 404 and their code isn't sent. Changes save at once and apply on the restaurant's next page load."
+      />
 
       {error && (
         <Alert variant="destructive" className="mb-4">
@@ -111,7 +102,7 @@ export function AdminNavMatrix() {
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-          <CardTitle className="text-base">{loading ? "Loading…" : `${rows.length} restaurant(s)`}</CardTitle>
+          <CardTitle className="text-base">{loading ? "Loading…" : `${rows.length} restaurant${rows.length === 1 ? "" : "s"}`}</CardTitle>
           <Input
             className="w-full sm:w-64"
             placeholder="Filter restaurants"
@@ -122,7 +113,10 @@ export function AdminNavMatrix() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="flex items-center text-sm text-muted-foreground" role="status">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              Loading sections…
+            </span>
           ) : (
             <div className="overflow-x-auto rounded-md border">
               <table className="w-full border-collapse text-sm">
@@ -187,6 +181,6 @@ export function AdminNavMatrix() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </ConsoleShell>
   )
 }

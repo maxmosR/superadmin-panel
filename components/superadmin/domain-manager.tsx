@@ -127,7 +127,7 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
   return (
     <section className="space-y-3">
       <div>
-        <h3 className="text-sm font-semibold text-muted-foreground">Domains</h3>
+        <h3 className="text-sm font-semibold">Domains</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           Every request is mapped to this business by its host. Add a bare label (<code>acme</code> →{" "}
           <code>acme.{rootDomain}</code>) or a full hostname (<code>shop.acme.com</code>). The primary domain is the one

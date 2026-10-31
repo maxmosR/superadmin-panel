@@ -52,12 +52,12 @@ export function PayoutAccountCell({
       }
     }
     return (
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col items-start gap-1">
         <Button size="sm" variant="outline" onClick={create} disabled={busy}>
           {busy && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
           Create payout account
         </Button>
-        {error && <span className="text-[11px] text-destructive">{error}</span>}
+        {error && <span className="text-xs text-destructive">{error}</span>}
       </div>
     )
   }
@@ -77,7 +77,7 @@ export function PayoutAccountCell({
       <button
         type="button"
         onClick={copy}
-        className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+        className="flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
         title="Copy account id"
       >
         {account.stripe_account_id}

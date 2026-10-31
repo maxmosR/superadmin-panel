@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-31T00:00:00Z",
+  "title": "Design System: BirraOra Operator Console",
+  "extensions": {
+    "colorMeta": {
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "oklch(0.65 0.2 250)",
+        "tonalRamp": [
+          "#00156c",
+          "#00309c",
+          "#0051bd",
+          "#0071df",
+          "#0091ff",
+          "#61b3ff",
+          "#a3d3ff",
+          "#e1f1ff"
+        ]
+      },
+      "alarm-red": {
+        "role": "tertiary",
+        "displayName": "Alarm Red",
+        "canonical": "oklch(0.6 0.25 15)"
+      },
+      "caution-amber": {
+        "role": "tertiary",
+        "displayName": "Caution Amber",
+        "canonical": "oklch(0.7 0.2 60)"
+      },
+      "go-green": {
+        "role": "tertiary",
+        "displayName": "Go Green",
+        "canonical": "oklch(0.6 0.2 140)"
+      },
+      "floor": {
+        "role": "neutral",
+        "displayName": "Floor",
+        "canonical": "oklch(0.98 0 0)",
+        "tonalRamp": [
+          "#222222",
+          "#3a3a3a",
+          "#555555",
+          "#717171",
+          "#8f8f8f",
+          "#aeaeae",
+          "#cecece",
+          "#eeeeee"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "oklch(1 0 0)"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(0.15 0 0)"
+      },
+      "quiet-ink": {
+        "role": "neutral",
+        "displayName": "Quiet Ink",
+        "canonical": "oklch(0.45 0 0)"
+      },
+      "well": {
+        "role": "neutral",
+        "displayName": "Well",
+        "canonical": "oklch(0.96 0 0)"
+      },
+      "chip-grey": {
+        "role": "neutral",
+        "displayName": "Chip Grey",
+        "canonical": "oklch(0.95 0 0)"
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(0.9 0 0)"
+      },
+      "field-border": {
+        "role": "neutral",
+        "displayName": "Field Border",
+        "canonical": "oklch(0.88 0 0)"
+      }
+    },
+    "typographyMeta": {
+      "page-title": {
+        "displayName": "Page title",
+        "purpose": "One per page, followed by a one-line description."
+      },
+      "section-title": {
+        "displayName": "Section title",
+        "purpose": "Card titles and dialog section headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Table cells, inputs, alerts."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Secondary lines, badges, autosave status, hints."
+      },
+      "data-mono": {
+        "displayName": "Data mono",
+        "purpose": "Slugs, ids, coordinates, JSON."
+      }
+    },
+    "shadows": [
+      {
+        "name": "xs",
+        "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "purpose": "Buttons and inputs at rest."
+      },
+      {
+        "name": "sm",
+        "value": "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
+        "purpose": "Cards."
+      },
+      {
+        "name": "md",
+        "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+        "purpose": "Overlays on the zones map."
+      },
+      {
+        "name": "lg",
+        "value": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+        "purpose": "Dialogs."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Colour and ring transitions on buttons, inputs, badges."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one primary action per view.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M5 12h14M12 5v14\"/></svg>New business</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;gap:8px;height:36px;padding:8px 16px;border:1px solid transparent;border-radius:6px;background:oklch(0.65 0.2 250);color:oklch(0.98 0 0);font:500 14px/20px Geist,system-ui,sans-serif;box-shadow:0 1px 2px rgb(0 0 0/.05);cursor:pointer;transition:background .15s,box-shadow .15s}.ds-btn-primary:hover{background:oklch(0.65 0.2 250/.9)}.ds-btn-primary:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.65 0.2 250/.5)}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary page actions.",
+      "html": "<button class=\"ds-btn-outline\">Sign out</button>",
+      "css": ".ds-btn-outline{height:32px;padding:0 12px;border:1px solid oklch(0.9 0 0);border-radius:6px;background:oklch(0.98 0 0);color:oklch(0.15 0 0);font:500 14px/20px Geist,system-ui,sans-serif;box-shadow:0 1px 2px rgb(0 0 0/.05);cursor:pointer;transition:background .15s}.ds-btn-outline:hover{background:oklch(0.95 0 0)}.ds-btn-outline:focus-visible{outline:none;border-color:oklch(0.65 0.2 250);box-shadow:0 0 0 3px oklch(0.65 0.2 250/.5)}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Row actions and header links.",
+      "html": "<button class=\"ds-btn-ghost\">Edit</button>",
+      "css": ".ds-btn-ghost{height:32px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:oklch(0.15 0 0);font:500 14px/20px Geist,system-ui,sans-serif;cursor:pointer;transition:background .15s}.ds-btn-ghost:hover{background:oklch(0.95 0 0)}.ds-btn-ghost:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.65 0.2 250/.5)}"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Final confirm of a destructive action.",
+      "html": "<button class=\"ds-btn-destructive\">Discard draft</button>",
+      "css": ".ds-btn-destructive{height:36px;padding:8px 16px;border:0;border-radius:6px;background:oklch(0.6 0.25 15);color:#fff;font:500 14px/20px Geist,system-ui,sans-serif;cursor:pointer;transition:background .15s}.ds-btn-destructive:hover{background:oklch(0.6 0.25 15/.9)}.ds-btn-destructive:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.6 0.25 15/.2)}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labelled form field.",
+      "html": "<label class=\"ds-field\"><span>Slug</span><input class=\"ds-input\" placeholder=\"trattoria-da-mario\"></label>",
+      "css": ".ds-field{display:grid;gap:8px;font:500 14px/20px Geist,system-ui,sans-serif;color:oklch(0.15 0 0)}.ds-input{height:36px;padding:4px 12px;border:1px solid oklch(0.88 0 0);border-radius:6px;background:transparent;font:400 14px/20px Geist,system-ui,sans-serif;color:oklch(0.15 0 0);box-shadow:0 1px 2px rgb(0 0 0/.05);transition:box-shadow .15s,border-color .15s}.ds-input::placeholder{color:oklch(0.45 0 0)}.ds-input:focus-visible{outline:none;border-color:oklch(0.65 0.2 250);box-shadow:0 0 0 3px oklch(0.65 0.2 250/.5)}"
+    },
+    {
+      "name": "Status Badges",
+      "kind": "chip",
+      "refersTo": "badge-secondary",
+      "description": "Zone status and readiness, always in words.",
+      "html": "<span class=\"ds-badge ds-badge-live\">Live v3</span> <span class=\"ds-badge ds-badge-draft\">Unpublished changes</span> <span class=\"ds-badge ds-badge-off\">Not set up</span> <span class=\"ds-chip\">no owner</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;padding:2px 8px;border:1px solid transparent;border-radius:6px;font:500 12px/16px Geist,system-ui,sans-serif}.ds-badge-live{background:oklch(0.95 0 0);color:oklch(0.15 0 0)}.ds-badge-draft{border-color:rgb(217 119 6/.5);color:#b45309}.ds-badge-off{background:oklch(0.6 0.25 15);color:#fff}.ds-chip{display:inline-flex;padding:0 6px;border:1px solid rgb(217 119 6/.4);border-radius:9999px;color:#b45309;font:400 12px/16px Geist,system-ui,sans-serif}"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Container for lists and grouped settings.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">3 restaurants</div><p class=\"ds-card-desc\">Provision businesses, their owners and staff.</p></div>",
+      "css": ".ds-card{display:flex;flex-direction:column;gap:6px;padding:24px;border:1px solid oklch(0.9 0 0);border-radius:12px;background:oklch(1 0 0);box-shadow:0 1px 3px rgb(0 0 0/.1);font-family:Geist,system-ui,sans-serif}.ds-card-title{font-weight:600;font-size:16px;line-height:1;color:oklch(0.15 0 0)}.ds-card-desc{margin:0;font-size:14px;color:oklch(0.45 0 0)}"
+    },
+    {
+      "name": "Header Nav",
+      "kind": "nav",
+      "description": "Page header bar.",
+      "html": "<header class=\"ds-nav\"><span class=\"ds-nav-brand\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"oklch(0.65 0.2 250)\" stroke-width=\"2\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/><path d=\"m9 12 2 2 4-4\"/></svg>Operator console</span><nav><a class=\"ds-nav-link\" aria-current=\"page\" href=\"#\">Restaurants</a><a class=\"ds-nav-link\" href=\"#\">Operators</a><a class=\"ds-nav-link\" href=\"#\">Admin panel sections</a></nav></header>",
+      "css": ".ds-nav{display:flex;align-items:center;gap:24px;padding:0 24px;border-bottom:1px solid oklch(0.9 0 0);background:oklch(1 0 0);font-family:Geist,system-ui,sans-serif}.ds-nav-brand{display:flex;align-items:center;gap:8px;font-weight:600}.ds-nav nav{display:flex;gap:4px}.ds-nav-link{position:relative;display:inline-flex;height:44px;align-items:center;padding:0 12px;color:oklch(0.45 0 0);font-size:14px;font-weight:500;text-decoration:none}.ds-nav-link:hover{color:oklch(0.15 0 0)}.ds-nav-link[aria-current=page]{color:oklch(0.15 0 0)}.ds-nav-link[aria-current=page]::after{content:\"\";position:absolute;left:12px;right:12px;bottom:0;height:2px;border-radius:9999px;background:oklch(0.65 0.2 250)}.ds-nav-link:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.65 0.2 250/.5)}"
+    },
+    {
+      "name": "Autosave Status",
+      "kind": "custom",
+      "description": "Zones editor save line; reuse wherever the console saves without a button.",
+      "html": "<span class=\"ds-save\">Saved</span> <span class=\"ds-save ds-save-err\">Not saved · <button>Retry</button></span>",
+      "css": ".ds-save{font:400 12px/16px Geist,system-ui,sans-serif;color:oklch(0.45 0 0)}.ds-save-err{color:oklch(0.6 0.25 15)}.ds-save-err button{border:0;background:none;padding:0;color:inherit;font:inherit;text-decoration:underline;cursor:pointer}"
+    },
+    {
+      "name": "Setup Checklist",
+      "kind": "custom",
+      "description": "Whether a restaurant can take orders, with a jump to each open step.",
+      "html": "<section class=\"ds-setup\"><div class=\"ds-setup-head\"><strong>Before it can take orders</strong><span>2 of 7 done</span></div><ul><li class=\"done\">Owner</li><li class=\"done\">Active domain</li><li>SMS sender<a href=\"#\">Set it below →</a></li><li>Delivery zones<a href=\"#\">Open the zones editor →</a></li></ul></section>",
+      "css": ".ds-setup{padding:16px;border:1px solid oklch(0.9 0 0);border-radius:8px;background:oklch(0.96 0 0/.4);font:400 14px/20px Geist,system-ui,sans-serif;color:oklch(0.15 0 0)}.ds-setup-head{display:flex;justify-content:space-between;margin-bottom:12px}.ds-setup-head span{font-size:12px;color:oklch(0.45 0 0)}.ds-setup ul{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;margin:0;padding:0;list-style:none}.ds-setup li{padding-left:24px;position:relative}.ds-setup li::before{content:\"\";position:absolute;left:0;top:3px;width:12px;height:12px;border:2px solid #b45309;border-radius:9999px}.ds-setup li.done{color:oklch(0.45 0 0)}.ds-setup li.done::before{border-color:#15803d;background:#15803d}.ds-setup a{display:block;font-size:12px;font-weight:500;color:oklch(0.65 0.2 250);text-decoration:none}.ds-setup a:hover{text-decoration:underline}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Control Room",
+    "overview": "The console is where a small BirraOra team keeps many restaurants running. Like a control room, it is calm at rest and loud only where something needs attention. Surfaces are neutral greys with no hue. Type is one family (Geist) at small, working sizes. Colour is kept for state: a restaurant with no owner, zones not set up, unpublished changes, a failed save. An operator should be able to scan a screen and see what needs doing from the colour alone, then confirm it in words.\n\nThe look is deliberately plain. This is an internal tool with no brand to project; it follows shadcn's \"new-york\" conventions so it reads as familiar and predictable. Ambition shows in precision instead: exact states, plain status copy, versioned and reversible changes. The delivery-zones editor is the reference for that: a step-by-step flow, autosave with a visible \"Saving… / Saved\" line, a draft-vs-live comparison and a confirmation before anything reaches customers.",
+    "keyCharacteristics": [
+      "Neutral, hue-free surfaces; one accent (Signal Blue) for the primary action, focus and active state.",
+      "Colour means state, never decoration.",
+      "One type family at working sizes; monospace only for ids, slugs, coordinates and JSON.",
+      "Flat panels separated by 1px hairlines; shadows are minimal.",
+      "Status always shown in words next to colour (\"Not set up\", \"Unpublished changes\", \"Live v3\")."
+    ],
+    "rules": [
+      {
+        "name": "The State-Only Rule",
+        "body": "Saturated colour appears only to mean something: an action, a state or a warning. If removing the colour would lose no information, remove it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Words-Too Rule",
+        "body": "Every coloured state also carries a text label. Amber and red are never the only signal.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two-Sizes Rule",
+        "body": "Working screens use 14px and 12px. 24px is for the page title only. Don't add sizes in between.",
+        "section": "typography"
+      },
+      {
+        "name": "The Ten-Pixel Floor",
+        "body": "Nothing goes below 12px for new work. The existing 10–11px badges and chips are a known exception to fix, not a pattern to copy.",
+        "section": "typography"
+      },
+      {
+        "name": "The Hairline Rule",
+        "body": "Separate things with a 1px Hairline border or a Floor/Panel step. Never stack shadows to create hierarchy.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep one Signal Blue primary button per view; everything else is outline or ghost.",
+      "Do pair every coloured state with words (\"Not set up\", \"Unpublished changes\", \"no owner\").",
+      "Do use the Floor/Panel step and 1px Hairlines for structure.",
+      "Do use 14px for working text and 12px for secondary lines; 16px in inputs on mobile.",
+      "Do put slugs, ids, coordinates and JSON in Geist Mono.",
+      "Do reuse the zones editor patterns (autosave line, step tabs with blocker counts, compare-before-publish) for other multi-step or high-stakes work.",
+      "Do show restaurant status with the setup checklist and `getReadiness`; don't invent a separate status badge.",
+      "Do keep ring colours in the fixed order from `RING_COLORS` everywhere a ring appears."
+    ],
+    "donts": [
+      "Don't use colour for decoration, gradients or tinted backgrounds on neutral content.",
+      "Don't add a second accent hue; status colours are for state only.",
+      "Don't put small white text on Signal Blue: the pair is about 3.2:1, so keep it to 14px medium button labels and larger.",
+      "Don't add new 10–11px text; 12px is the floor.",
+      "Don't separate areas with shadows; use a hairline or the tonal step.",
+      "Don't show BirraOra or console styling on anything a restaurant's customers see; this system is for the operator console only."
+    ]
+  }
+}

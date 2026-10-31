@@ -5,8 +5,8 @@ import { GeistMono } from "geist/font/mono"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Super Admin",
-  description: "Platform administration console",
+  title: "Operator console · BirraOra",
+  description: "Set up restaurants, owners, domains and delivery zones.",
 }
 
 export default function RootLayout({
