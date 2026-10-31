@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -68,6 +68,7 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
   // Fields the operator typed in themselves stop following the name.
   const [touched, setTouched] = useState<Partial<Record<keyof Form, boolean>>>({})
   const [submitting, setSubmitting] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
   const [showErrors, setShowErrors] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState<{ businessId: string; subdomain: string; owner: string; ownerKind: "email" | "phone" } | null>(null)
@@ -115,6 +116,8 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
     setError("")
     if (Object.values(problems).some(Boolean)) {
       setShowErrors(true)
+      // After the errors render, put the cursor in the first field to fix.
+      requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus())
       return
     }
 
@@ -219,7 +222,7 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
             </DialogFooter>
           </>
         ) : (
-          <form onSubmit={handleSubmit} noValidate className="grid gap-4">
+          <form ref={formRef} onSubmit={handleSubmit} noValidate className="grid gap-4">
             <DialogHeader>
               <DialogTitle>New restaurant</DialogTitle>
               <DialogDescription>

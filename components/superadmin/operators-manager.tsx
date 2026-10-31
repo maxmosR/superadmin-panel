@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { ConsoleShell, PageHead } from "./console-shell"
+import { useConfirm } from "./confirm-dialog"
 
 interface Operator {
   user_id: string
@@ -17,6 +18,7 @@ interface Operator {
 // Platform operators: activate / deactivate. The API refuses to deactivate
 // the last active operator.
 export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | null }) {
+  const { confirm, dialog } = useConfirm()
   const [operators, setOperators] = useState<Operator[]>([])
   const [me, setMe] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -25,6 +27,7 @@ export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | 
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError("")
     const res = await fetch("/api/operators", { cache: "no-store" })
     const j = await res.json().catch(() => ({}))
     if (res.ok) {
@@ -39,6 +42,15 @@ export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | 
   }, [load])
 
   const toggle = async (op: Operator) => {
+    if (op.is_active) {
+      const ok = await confirm({
+        title: `Deactivate ${op.email ?? "this operator"}?`,
+        description: "They lose access to the console on their next page load or action, until an operator activates them again.",
+        confirmLabel: "Deactivate",
+        destructive: true,
+      })
+      if (!ok) return
+    }
     setBusy(op.user_id)
     setError("")
     const res = await fetch("/api/operators", {
@@ -63,7 +75,7 @@ export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            {loading ? "Loading…" : `${operators.length} operator${operators.length === 1 ? "" : "s"}`}
+            {loading ? "Operators" : `${operators.length} operator${operators.length === 1 ? "" : "s"}`}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -83,15 +95,27 @@ export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | 
                     </div>
                     <div className="text-xs text-muted-foreground">{op.is_active ? "Active" : "Inactive"}</div>
                   </div>
-                  <Button size="sm" variant="outline" disabled={busy === op.user_id} onClick={() => void toggle(op)}>
-                    {op.is_active ? "Deactivate" : "Activate"}
-                  </Button>
+                  {op.user_id === me && op.is_active ? (
+                    // Deactivating yourself would lock you out mid-session; another operator has to do it.
+                    <span className="text-xs text-muted-foreground">Ask another operator to deactivate you</span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy === op.user_id}
+                      aria-label={`${op.is_active ? "Deactivate" : "Activate"} ${op.email ?? "operator"}`}
+                      onClick={() => void toggle(op)}
+                    >
+                      {op.is_active ? "Deactivate" : "Activate"}
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
           )}
         </CardContent>
       </Card>
+      {dialog}
     </ConsoleShell>
   )
 }

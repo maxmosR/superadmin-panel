@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Copy, Loader2 } from "lucide-react"
+import { useConfirm } from "./confirm-dialog"
 
 export interface PayoutAccountSummary {
   stripe_account_id: string
@@ -19,21 +20,41 @@ export interface PayoutAccountSummary {
  * of outstanding requirements. Status changes arrive through Stripe's
  * `account.updated` webhook; reload to see them.
  */
+const PAYOUT_ERRORS: Record<string, string> = {
+  payment_gateway_unavailable: "Stripe didn't answer. Try again in a minute.",
+  unauthenticated: "Your session ended. Sign in again and retry.",
+}
+
 export function PayoutAccountCell({
   businessId,
+  businessName,
   account,
   onCreated,
 }: {
   businessId: string
+  businessName?: string
   account: PayoutAccountSummary | null
   onCreated: () => void
 }) {
+  const { confirm, dialog } = useConfirm()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [copied, setCopied] = useState(false)
 
   if (!account) {
     const create = async () => {
+      const ok = await confirm({
+        title: `Create a payout account for ${businessName ?? "this restaurant"}?`,
+        description: (
+          <>
+            <p>This creates the restaurant&apos;s Stripe connected account, where its card payments are paid out.</p>
+            <p>The owner then finishes Stripe&apos;s onboarding (identity and bank details). Until then, card payments stay off.</p>
+            <p>The account can&apos;t be deleted from the console.</p>
+          </>
+        ),
+        confirmLabel: "Create account",
+      })
+      if (!ok) return
       setBusy(true)
       setError("")
       try {
@@ -43,21 +64,26 @@ export function PayoutAccountCell({
           body: JSON.stringify({ business_id: businessId }),
         })
         const j = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(j.error || `Failed (${res.status})`)
+        if (!res.ok) throw new Error(PAYOUT_ERRORS[j.error] ?? `Couldn't create the account (${j.error || res.status}).`)
         onCreated()
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed")
+        setError(e instanceof Error ? e.message : "Couldn't create the account.")
       } finally {
         setBusy(false)
       }
     }
     return (
       <div className="flex flex-col items-start gap-1">
-        <Button size="sm" variant="outline" onClick={create} disabled={busy}>
-          {busy && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+        <Button size="sm" variant="outline" onClick={() => void create()} disabled={busy}>
+          {busy && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
           Create payout account
         </Button>
-        {error && <span className="text-xs text-destructive">{error}</span>}
+        {error && (
+          <span className="text-xs text-destructive" role="alert">
+            {error}
+          </span>
+        )}
+        {dialog}
       </div>
     )
   }
@@ -79,16 +105,20 @@ export function PayoutAccountCell({
         onClick={copy}
         className="flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
         title="Copy account id"
+        aria-label={`Copy Stripe account id ${account.stripe_account_id}`}
       >
         {account.stripe_account_id}
         <Copy className="h-3 w-3" />
-        {copied && <span className="font-sans text-green-700">copied</span>}
+        <span className="font-sans text-green-700" aria-live="polite">
+          {copied ? "copied" : ""}
+        </span>
       </button>
       <div className="flex flex-wrap gap-1">
-        <Badge variant={account.charges_enabled ? "secondary" : "destructive"}>
+        {/* "Off" is the normal state while the owner finishes Stripe onboarding: amber, not red. */}
+        <Badge variant={account.charges_enabled ? "secondary" : "outline"} className={account.charges_enabled ? undefined : "border-amber-600/50 text-amber-700"}>
           charges {account.charges_enabled ? "on" : "off"}
         </Badge>
-        <Badge variant={account.payouts_enabled ? "secondary" : "destructive"}>
+        <Badge variant={account.payouts_enabled ? "secondary" : "outline"} className={account.payouts_enabled ? undefined : "border-amber-600/50 text-amber-700"}>
           payouts {account.payouts_enabled ? "on" : "off"}
         </Badge>
         {account.outstanding_requirements > 0 && (

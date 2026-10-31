@@ -239,7 +239,14 @@ How the console shows whether a restaurant can take orders. The steps come from 
 - **In the edit dialog:** a Well-tinted box at the top with a two-column list. Done steps get a green check and Quiet Ink text; open steps get an amber circle (grey if not blocking) and a "Set it below →" link that scrolls to that section, "Open the zones editor →", or a note when the owner does it (opening hours).
 - **After creating a restaurant:** the same list, with "Continue setup" opening the edit dialog.
 
-### Autosave status (signature)
+### Confirmation dialog
+One pattern (`useConfirm`, `components/superadmin/confirm-dialog.tsx`) for every change that takes effect at once and can't simply be undone: removing staff or a domain, disabling a domain, owner changes, deactivating an operator, hiding all of a restaurant's sections, creating a payout account, discarding unsaved edits.
+- **Title:** a question that names the person, address or restaurant ("Remove Mario Rossi from Trattoria da Mario?").
+- **Body:** what happens and when, in Quiet Ink 14px; say whether it can be undone and the safer alternative if there is one.
+- **Buttons:** Cancel (outline) has focus when it opens, so Enter never confirms by accident; the confirm button is Alarm Red for removals, Signal Blue otherwise. Focus returns to the control that opened it.
+- Reversible, low-stakes changes (showing sections, activating an operator, non-owner role changes) don't ask.
+
+
 A 12px line next to the step controls in the zones editor: spinner + "Saving…" in Quiet Ink, "Saved" in Quiet Ink, "Not saved" in Alarm Red with an inline underlined "Retry", and a red conflict message when another window changed the draft. Reuse this pattern wherever the console saves without an explicit button.
 
 ### Zone step panel (signature)
@@ -253,6 +260,7 @@ A row of step tabs (Center, Rings, Cut, Pieces, Test, Publish, History) with red
 - **Do** use the Floor/Panel step and 1px Hairlines for structure.
 - **Do** use 14px for working text and 12px for secondary lines; 16px in inputs on mobile.
 - **Do** put slugs, ids, coordinates and JSON in Geist Mono.
+- **Do** confirm immediate, hard-to-undo changes with the confirmation dialog, naming what is affected.
 - **Do** show restaurant status with the setup checklist and `getReadiness`; don't invent a separate status badge.
 - **Do** reuse the zones editor patterns (autosave line, step tabs with blocker counts, compare-before-publish) for other multi-step or high-stakes work.
 - **Do** keep ring colours in the fixed order from `RING_COLORS` everywhere a ring appears.

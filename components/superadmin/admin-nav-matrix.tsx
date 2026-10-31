@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { ConsoleShell, PageHead } from "./console-shell"
+import { useConfirm } from "./confirm-dialog"
 
 interface NavItem {
   key: string
@@ -24,6 +25,7 @@ interface BusinessRow {
 // restaurant's admin panel shows that section. Every click saves at once
 // (PUT /api/admin-nav); the restaurant sees it on its next page load.
 export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | null }) {
+  const { confirm, dialog } = useConfirm()
   const [items, setItems] = useState<NavItem[]>([])
   const [rows, setRows] = useState<BusinessRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -77,7 +79,16 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
     void save(row.business_id, hidden, row.hidden_items)
   }
 
-  const setAll = (row: BusinessRow, visible: boolean) => {
+  const setAll = async (row: BusinessRow, visible: boolean) => {
+    if (!visible) {
+      const ok = await confirm({
+        title: `Hide every section for ${row.business_name}?`,
+        description: `All ${items.length} sections leave its admin panel menu and their pages answer “not found” from the restaurant's next page load. Staff can't take or manage orders from the panel until you show them again.`,
+        confirmLabel: "Hide all sections",
+        destructive: true,
+      })
+      if (!ok) return
+    }
     void save(row.business_id, visible ? [] : items.map((i) => i.key), row.hidden_items)
   }
 
@@ -158,10 +169,10 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
                           </td>
                         ))}
                         <td className="px-3 py-2 text-center whitespace-nowrap">
-                          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setAll(row, true)}>
+                          <Button size="sm" variant="ghost" disabled={busy} aria-label={`Show all sections for ${row.business_name}`} onClick={() => void setAll(row, true)}>
                             Show all
                           </Button>
-                          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setAll(row, false)}>
+                          <Button size="sm" variant="ghost" disabled={busy} aria-label={`Hide all sections for ${row.business_name}`} onClick={() => void setAll(row, false)}>
                             Hide all
                           </Button>
                         </td>
@@ -181,6 +192,7 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
           )}
         </CardContent>
       </Card>
+      {dialog}
     </ConsoleShell>
   )
 }

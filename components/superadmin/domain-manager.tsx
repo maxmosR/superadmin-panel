@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Check, Loader2, Pencil, Plus, Star, Trash2, X } from "lucide-react"
 import { domainDisplayHost, domainKind } from "@/lib/domains"
+import { useConfirm } from "./confirm-dialog"
 
 export interface DomainRow {
   domain: string
@@ -25,6 +26,7 @@ export interface DomainRow {
  * is a live entry point for this business, and the list can never be emptied.
  */
 export function DomainManager({ businessId, rootDomain }: { businessId: string; rootDomain: string }) {
+  const { confirm, dialog } = useConfirm()
   const [domains, setDomains] = useState<DomainRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -112,17 +114,42 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
       body: JSON.stringify({ business_id: businessId, domain, is_primary: true, is_active: true }),
     })
 
-  const toggleActive = (row: DomainRow) =>
-    call(`active:${row.domain}`, {
+  const toggleActive = async (row: DomainRow) => {
+    const host = domainDisplayHost(row.domain, rootDomain)
+    if (row.is_active) {
+      const ok = await confirm({
+        title: `Disable ${host}?`,
+        description: "Customers and staff opening this address get a “not found” page straight away. You can enable it again at any time.",
+        confirmLabel: "Disable",
+        destructive: true,
+      })
+      if (!ok) return false
+    }
+    return call(`active:${row.domain}`, {
       method: "PATCH",
       body: JSON.stringify({ business_id: businessId, domain: row.domain, is_active: !row.is_active }),
     })
+  }
 
-  const remove = (domain: string) =>
-    call(`del:${domain}`, {
+  const remove = async (domain: string) => {
+    const host = domainDisplayHost(domain, rootDomain)
+    const ok = await confirm({
+      title: `Remove ${host}?`,
+      description: (
+        <>
+          <p>Customers and staff opening this address get a “not found” page straight away.</p>
+          <p>To bring it back you&apos;d add it again. If you might need it, disable it instead.</p>
+        </>
+      ),
+      confirmLabel: "Remove domain",
+      destructive: true,
+    })
+    if (!ok) return false
+    return call(`del:${domain}`, {
       method: "DELETE",
       url: `/api/businesses/domains?business_id=${encodeURIComponent(businessId)}&domain=${encodeURIComponent(domain)}`,
     })
+  }
 
   return (
     <section className="space-y-3">
@@ -160,12 +187,14 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                 {isEditing ? (
                   <div className="flex flex-1 flex-col gap-2 sm:flex-row">
                     <Input
+                      aria-label="Domain"
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value.toLowerCase())}
                       className="sm:max-w-[260px]"
                       placeholder="acme or shop.acme.com"
                     />
                     <Input
+                      aria-label="Note"
                       value={editLabel}
                       onChange={(e) => setEditLabel(e.target.value)}
                       className="sm:max-w-[200px]"
@@ -194,11 +223,11 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
 
                   {isEditing ? (
                     <>
-                      <Button size="sm" variant="ghost" onClick={() => handleSaveEdit(row.domain)} disabled={!!busy}>
-                        <Check className="h-4 w-4" />
+                      <Button size="sm" variant="ghost" aria-label="Save domain" title="Save" onClick={() => handleSaveEdit(row.domain)} disabled={!!busy}>
+                        <Check className="h-4 w-4" aria-hidden />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingDomain(null)} disabled={!!busy}>
-                        <X className="h-4 w-4" />
+                      <Button size="sm" variant="ghost" aria-label="Cancel editing" title="Cancel" onClick={() => setEditingDomain(null)} disabled={!!busy}>
+                        <X className="h-4 w-4" aria-hidden />
                       </Button>
                     </>
                   ) : (
@@ -208,6 +237,7 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                           size="sm"
                           variant="ghost"
                           title="Make primary"
+                          aria-label={`Make ${domainDisplayHost(row.domain, rootDomain)} the primary domain`}
                           onClick={() => setPrimary(row.domain)}
                           disabled={!!busy}
                         >
@@ -218,6 +248,7 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                         size="sm"
                         variant="ghost"
                         title="Rename / re-point"
+                        aria-label={`Edit ${domainDisplayHost(row.domain, rootDomain)}`}
                         onClick={() => {
                           setEditingDomain(row.domain)
                           setEditValue(row.domain)
@@ -231,7 +262,8 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                         size="sm"
                         variant="ghost"
                         title={row.is_active ? "Disable" : "Enable"}
-                        onClick={() => toggleActive(row)}
+                        aria-label={`${row.is_active ? "Disable" : "Enable"} ${domainDisplayHost(row.domain, rootDomain)}`}
+                        onClick={() => void toggleActive(row)}
                         disabled={!!busy || row.is_primary}
                       >
                         {row.is_active ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
@@ -240,7 +272,8 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                         size="sm"
                         variant="ghost"
                         title="Remove"
-                        onClick={() => remove(row.domain)}
+                        aria-label={`Remove ${domainDisplayHost(row.domain, rootDomain)}`}
+                        onClick={() => void remove(row.domain)}
                         disabled={!!busy || domains.length <= 1}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -256,8 +289,9 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1 space-y-1.5">
-          <Label className="text-sm">Add domain</Label>
+          <Label htmlFor={`${businessId}-new-domain`} className="text-sm">Add domain</Label>
           <Input
+            id={`${businessId}-new-domain`}
             value={newDomain}
             onChange={(e) => setNewDomain(e.target.value.toLowerCase())}
             placeholder="acme or shop.acme.com"
@@ -270,14 +304,15 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
           />
         </div>
         <div className="flex-1 space-y-1.5">
-          <Label className="text-sm">Note (optional)</Label>
-          <Input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="e.g. marketing site" />
+          <Label htmlFor={`${businessId}-new-note`} className="text-sm">Note (optional)</Label>
+          <Input id={`${businessId}-new-note`} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="e.g. marketing site" />
         </div>
         <Button onClick={handleAdd} disabled={!!busy || !newDomain.trim()}>
           {busy === "add" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
           Add
         </Button>
       </div>
+      {dialog}
     </section>
   )
 }

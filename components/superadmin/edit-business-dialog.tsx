@@ -23,6 +23,7 @@ import { StaffRolesPanel } from "./staff-roles-panel"
 import { PayoutAccountCell } from "./payout-account-cell"
 import { SetupChecklist } from "./setup-status"
 import { Field } from "./field"
+import { useConfirm } from "./confirm-dialog"
 import type { BusinessRow } from "./superadmin-dashboard"
 
 /** A section to scroll to when the dialog opens. */
@@ -31,18 +32,49 @@ export type EditFocus = SetupSection | "payout"
 interface Props {
   business: BusinessRow | null
   focus?: EditFocus
+  /** The button that opened the dialog; focus goes back to it on close. */
+  returnFocus?: HTMLElement
   onOpenChange: (open: boolean) => void
   rootDomain: string
+  /** Something saved (a field, staff, a domain, the payout account): reload the list. */
   onSaved: () => void
+  /** "Save changes" finished; the dialog has closed. */
+  onDone?: (businessName: string) => void
+}
+
+// Fields sent by "Save changes": restaurant details, branding, configuration
+// (PATCH /api/businesses), then order settings (PUT …/order-settings).
+const ORDER_FIELDS = ["order_notification_email", "pay_card", "pay_cash"]
+
+// Order-settings refusals in plain words; anything else shows its code.
+const ORDER_ERRORS: Record<string, string> = {
+  invalid_email: "the order email isn't a valid address",
+  invalid_payment_methods: "keep at least one payment method on",
+  not_found: "the restaurant no longer exists",
+  not_operator: "your operator access has ended",
 }
 
 const sectionId = (s: EditFocus) => `edit-section-${s}`
 
-export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, onSaved }: Props) {
+export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange, rootDomain, onSaved, onDone }: Props) {
+  const { confirm, dialog } = useConfirm()
   const [form, setForm] = useState<Record<string, string>>({})
+  // What the fields held when opened (or last saved): the dirty check compares against it.
+  const [baseline, setBaseline] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
   const openedFor = useRef<string | null>(null)
+  const errorRef = useRef<HTMLDivElement>(null)
+  // The prop is already null while the close animation runs; remember whose dialog this was.
+  const lastBusinessId = useRef<string | null>(null)
+  useEffect(() => {
+    if (business) lastBusinessId.current = business.business_id
+  }, [business])
+
+  // A save error sits at the top; the operator is usually scrolled to the footer.
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+  }, [error])
 
   // Prefill when a restaurant is opened. A reload of the list while the dialog
   // is open (after a staff or payout change) must not wipe what was typed.
@@ -54,7 +86,7 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
     if (openedFor.current === business.business_id) return
     openedFor.current = business.business_id
     setError("")
-    setForm({
+    const initial: Record<string, string> = {
       business_name: business.business_name ?? "",
       name_abbreviation: business.name_abbreviation ?? "",
       tax_id: business.tax_id ?? "",
@@ -70,14 +102,38 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
       order_notification_email: business.order_notification_email ?? "",
       pay_card: business.config?.payment_methods?.card === false ? "off" : "on",
       pay_cash: business.config?.payment_methods?.cash === false ? "off" : "on",
-    })
+    }
+    setForm(initial)
+    setBaseline(initial)
   }, [business])
 
+  const dirty = Object.keys(form).some((k) => (form[k] ?? "") !== (baseline[k] ?? ""))
+
+  // Esc, the close button, clicking outside and Cancel all come through here.
+  const requestClose = async () => {
+    if (submitting) return
+    if (dirty) {
+      const ok = await confirm({
+        title: "Discard your changes?",
+        description: "The fields you edited haven't been saved. Domains, staff, providers and the payout account already saved on their own.",
+        confirmLabel: "Discard changes",
+        destructive: true,
+      })
+      if (!ok) return
+    }
+    onOpenChange(false)
+  }
+
+  // Scroll to a section and put the cursor in its first empty field, so the
+  // operator can type straight away.
   const jumpTo = useCallback((section: EditFocus) => {
     const el = document.getElementById(sectionId(section))
     if (!el) return
     el.scrollIntoView({ behavior: "smooth", block: "start" })
-    el.focus({ preventScroll: true })
+    const fields = Array.from(el.querySelectorAll<HTMLInputElement>("input:not([type=checkbox]):not([disabled])"))
+    const target: HTMLElement | null =
+      fields.find((f) => !f.value) ?? el.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled]), select")
+    ;(target ?? el).focus({ preventScroll: true })
   }, [])
 
   // Opened from a setup step: land on that section once the dialog has rendered.
@@ -99,6 +155,7 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
     }
 
     setSubmitting(true)
+    let detailsSaved = false
     try {
       // Opening hours and appointment limits are the owner's, set in the
       // restaurant's admin panel; they're left out so this never overwrites them.
@@ -122,7 +179,8 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
         }),
       })
       const j = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`)
+      if (!res.ok) throw new Error(`Nothing was saved: ${j.error || `request failed (${res.status})`}.`)
+      detailsSaved = true
 
       // Order email and payment methods: their own command (set_order_settings).
       const res2 = await fetch("/api/businesses/order-settings", {
@@ -135,12 +193,26 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
         }),
       })
       const j2 = await res2.json().catch(() => ({}))
-      if (!res2.ok) throw new Error(j2.error || `Order settings failed (${res2.status})`)
+      if (!res2.ok)
+        throw new Error(
+          `Details, branding and configuration were saved, but the order email and payment methods weren't: ${ORDER_ERRORS[j2.error] ?? j2.error ?? `request failed (${res2.status})`}. Fix them and save again.`,
+        )
 
+      setBaseline(form)
       onSaved()
       onOpenChange(false)
+      onDone?.(form.business_name || business.business_name)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update the restaurant")
+      if (detailsSaved) {
+        // Only the order fields are still unsaved; the rest now matches the server.
+        setBaseline((b) => {
+          const next = { ...form }
+          for (const k of ORDER_FIELDS) next[k] = b[k]
+          return next
+        })
+        onSaved()
+      }
+      setError(e instanceof Error ? e.message : "Couldn't save the restaurant.")
     } finally {
       setSubmitting(false)
     }
@@ -150,8 +222,22 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
   const hasHours = readiness?.steps.find((s) => s.key === "hours")?.done
 
   return (
-    <Dialog open={!!business} onOpenChange={(o) => (o ? undefined : onOpenChange(false))}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+    <Dialog open={!!business} onOpenChange={(o) => (o ? undefined : void requestClose())}>
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
+        onCloseAutoFocus={(e) => {
+          // Back to the button that opened it; if the row re-rendered, its replacement.
+          const target =
+            (returnFocus?.isConnected ? returnFocus : null) ??
+            (lastBusinessId.current
+              ? document.querySelector<HTMLElement>(`[data-edit-restaurant="${lastBusinessId.current}"]`)
+              : null)
+          if (target) {
+            e.preventDefault()
+            target.focus()
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{business ? business.business_name : "Edit restaurant"}</DialogTitle>
           <DialogDescription>
@@ -170,7 +256,7 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
         )}
 
         {error && (
-          <Alert variant="destructive">
+          <Alert ref={errorRef} variant="destructive" className="scroll-mt-4">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
@@ -259,7 +345,7 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
             <div id={sectionId("payout")} tabIndex={-1} className="mt-4 scroll-mt-4 rounded-md border p-3 outline-none">
               <div className="mb-2 text-sm font-medium">Payout account</div>
               {business && (
-                <PayoutAccountCell businessId={business.business_id} account={business.payout_account ?? null} onCreated={onSaved} />
+                <PayoutAccountCell businessId={business.business_id} businessName={business.business_name} account={business.payout_account ?? null} onCreated={onSaved} />
               )}
               <p className="mt-2 text-xs text-muted-foreground">
                 Stripe updates its status once the owner finishes onboarding. Reopen this dialog to see the latest.
@@ -270,7 +356,7 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
           <Separator />
 
           <Section id="staff" title="Staff and owners">
-            {business && <StaffRolesPanel businessId={business.business_id} onChanged={onSaved} />}
+            {business && <StaffRolesPanel businessId={business.business_id} businessName={business.business_name} onChanged={onSaved} />}
           </Section>
 
           <Separator />
@@ -314,7 +400,7 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
           <p className="mr-auto hidden self-center text-xs text-muted-foreground sm:block">
             Domains, staff, providers and payout save on their own.
           </p>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+          <Button variant="outline" onClick={() => void requestClose()} disabled={submitting}>
             Cancel
           </Button>
           <Button onClick={() => void handleSave()} disabled={submitting}>
@@ -322,6 +408,7 @@ export function EditBusinessDialog({ business, focus, onOpenChange, rootDomain, 
             {submitting ? "Saving…" : "Save changes"}
           </Button>
         </DialogFooter>
+        {dialog}
       </DialogContent>
     </Dialog>
   )

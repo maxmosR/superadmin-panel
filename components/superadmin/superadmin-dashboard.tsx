@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, MapPinned, Pencil, Plus, Search } from "lucide-react"
+import { CheckCircle2, Loader2, MapPinned, Pencil, Plus, Search } from "lucide-react"
 import { domainDisplayHost } from "@/lib/domains"
 import { getReadiness } from "@/lib/readiness"
 import { ConsoleShell, PageHead } from "./console-shell"
@@ -68,14 +68,25 @@ export function SuperAdminDashboard({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<{ row: BusinessRow; focus?: EditFocus } | null>(null)
+  const [editing, setEditing] = useState<{ row: BusinessRow; focus?: EditFocus; trigger?: HTMLElement } | null>(null)
+  // Short confirmation after a save, read out by screen readers too.
+  const [notice, setNotice] = useState("")
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const announce = useCallback((text: string) => {
+    setNotice(text)
+    if (noticeTimer.current) clearTimeout(noticeTimer.current)
+    noticeTimer.current = setTimeout(() => setNotice(""), 6000)
+  }, [])
   // "Continue setup" clicked before the new restaurant is in the list: open it on the next load.
   const pendingEditId = useRef<string | null>(null)
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<"all" | "setup">("all")
 
+  const hasLoaded = useRef(false)
   const load = useCallback(async () => {
-    setLoading(true)
+    // Only the first load shows the spinner; refreshes after a save keep the
+    // table (and the focused row button) in place.
+    if (!hasLoaded.current) setLoading(true)
     setError("")
     try {
       const res = await fetch("/api/businesses")
@@ -85,6 +96,7 @@ export function SuperAdminDashboard({
       }
       const j = await res.json()
       const rows: BusinessRow[] = j.businesses ?? []
+      hasLoaded.current = true
       setBusinesses(rows)
       // Keep an open edit dialog on fresh data (staff or payout changes reload the list).
       const pending = pendingEditId.current && rows.find((r) => r.business_id === pendingEditId.current)
@@ -138,6 +150,11 @@ export function SuperAdminDashboard({
           </Button>
         }
       />
+
+      <p role="status" aria-live="polite" className={notice ? "mb-4 flex items-center gap-2 text-sm font-medium text-green-700" : "sr-only"}>
+        {notice && <CheckCircle2 className="h-4 w-4" aria-hidden />}
+        {notice}
+      </p>
 
       {error && (
         <Alert variant="destructive" className="mb-4">
@@ -252,11 +269,16 @@ export function SuperAdminDashboard({
                     )}
                   </TableCell>
                   <TableCell className="py-3">
-                    <PayoutAccountCell businessId={b.business_id} account={b.payout_account ?? null} onCreated={load} />
+                    <PayoutAccountCell businessId={b.business_id} businessName={b.business_name} account={b.payout_account ?? null} onCreated={load} />
                   </TableCell>
                   <TableCell className="py-3 pr-4 text-right sm:pr-6">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant={readiness.ready ? "ghost" : "outline"} size="sm" onClick={() => setEditing({ row: b })}>
+                      <Button
+                        variant={readiness.ready ? "ghost" : "outline"}
+                        size="sm"
+                        data-edit-restaurant={b.business_id}
+                        onClick={(e) => setEditing({ row: b, trigger: e.currentTarget })}
+                      >
                         {readiness.ready ? (
                           <>
                             <Pencil className="h-4 w-4" aria-hidden />
@@ -289,7 +311,9 @@ export function SuperAdminDashboard({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         rootDomain={rootDomain}
-        onCreated={load}
+        onCreated={() => {
+          void load()
+        }}
         onContinue={(id) => {
           const row = businesses.find((b) => b.business_id === id)
           if (row) setEditing({ row })
@@ -300,6 +324,8 @@ export function SuperAdminDashboard({
       <EditBusinessDialog
         business={editing?.row ?? null}
         focus={editing?.focus}
+        returnFocus={editing?.trigger}
+        onDone={(name) => announce(`Saved changes to ${name}.`)}
         onOpenChange={(open) => !open && setEditing(null)}
         rootDomain={rootDomain}
         onSaved={load}
