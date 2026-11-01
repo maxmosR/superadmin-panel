@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Pencil, Plus } from "lucide-react"
 import { CALC_MODES, RATE_FIELDS, type CalcMode, type Provider } from "@/lib/providers"
 import { useI18n } from "@/lib/i18n/client"
+import { ConsoleShell, PageHead } from "./console-shell"
 import { apiError } from "@/lib/i18n/api-error"
 
 type Form = Record<string, string> & { calc_mode: CalcMode }
@@ -52,6 +53,15 @@ const toForm = (p: Provider): Form => ({
   default_tax_rate: String(p.default_tax_rate),
   default_customer_service_number: p.default_customer_service_number ?? "",
 })
+
+/** The providers page: the platform's list, in the console frame. */
+export function ProvidersPage({ adminEmail }: { adminEmail: string | null }) {
+  return (
+    <ConsoleShell adminEmail={adminEmail}>
+      <ProvidersManager />
+    </ConsoleShell>
+  )
+}
 
 /** Platform master list of providers: create, edit, disable, mark mandatory. */
 export function ProvidersManager() {
@@ -145,16 +155,16 @@ export function ProvidersManager() {
 
   return (
     <>
-      <div className="mb-4 mt-10 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold">{t.providers.title}</h2>
-          <p className="text-sm text-muted-foreground">{t.providers.description}</p>
-        </div>
-        <Button variant="outline" onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" aria-hidden />
-          {t.providers.add}
-        </Button>
-      </div>
+      <PageHead
+        title={t.providers.title}
+        description={t.providers.pageDescription}
+        action={
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" aria-hidden />
+            {t.providers.add}
+          </Button>
+        }
+      />
 
       {error && (
         <Alert variant="destructive" className="mb-4">
@@ -165,7 +175,7 @@ export function ProvidersManager() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            {loading ? t.common.loading : t.providers.count(providers.length)}
+            {loading ? null : t.providers.count(providers.length)}
           </CardTitle>
         </CardHeader>
         <CardContent>

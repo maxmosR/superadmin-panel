@@ -23,7 +23,6 @@ export const en = {
   created: "{currency} · created {date}",
   zones: "Zones",
   zonesFor: " for {name}",
-  saved: "Saved changes to {name}.",
 }
 
 export const it: typeof en = {
@@ -50,5 +49,4 @@ export const it: typeof en = {
   created: "{currency} · creato il {date}",
   zones: "Zone",
   zonesFor: " di {name}",
-  saved: "Modifiche a {name} salvate.",
 }

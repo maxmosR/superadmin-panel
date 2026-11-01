@@ -27,7 +27,19 @@ export interface DomainRow {
  * is what the backend turns into a business_id — so every domain listed here
  * is a live entry point for this business, and the list can never be emptied.
  */
-export function DomainManager({ businessId, rootDomain }: { businessId: string; rootDomain: string }) {
+export function DomainManager({
+  businessId,
+  rootDomain,
+  showTitle = true,
+  onChanged,
+}: {
+  businessId: string
+  rootDomain: string
+  /** False when the surrounding section already titles it. */
+  showTitle?: boolean
+  /** A domain was added, changed or removed (readiness may change). */
+  onChanged?: () => void
+}) {
   const { confirm, dialog } = useConfirm()
   const { t, fmt } = useI18n()
   // Latest strings for the loader, so switching language doesn't refetch.
@@ -78,6 +90,7 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(apiError(t, j.error, res.status))
       await load()
+      onChanged?.()
       return true
     } catch (e) {
       setError(e instanceof Error && !(e instanceof TypeError) ? e.message : t.common.network)
@@ -162,8 +175,8 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
   return (
     <section className="space-y-3">
       <div>
-        <h3 className="text-sm font-semibold">{t.domains.title}</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
+        {showTitle && <h3 className="text-sm font-semibold">{t.domains.title}</h3>}
+        <p className={showTitle ? "mt-1 text-xs text-muted-foreground" : "text-xs text-muted-foreground"}>
           {t.domains.intro1}
           <code>acme</code> → <code>acme.{rootDomain}</code>
           {t.domains.intro2}

@@ -229,7 +229,7 @@ Plain and compact.
 ### Navigation
 One shared header on every console page (`ConsoleShell`), on Panel with a bottom Hairline, 1152px wide on every page so it never moves; wide tables such as the sections matrix scroll inside their own card:
 - **Left:** a 20px ShieldCheck icon in Signal Blue and "Operator console" in 600 weight, linking home.
-- **Sections:** Restaurants, Operators, Admin panel sections, as 44px-tall text tabs in Quiet Ink. The current page is Ink with a 2px Signal Blue underline and `aria-current="page"`. Below 768px the tabs take their own row and scroll sideways without a scrollbar.
+- **Sections:** Restaurants, Operators, Admin panel sections, Providers, as 44px-tall text tabs in Quiet Ink. The current page is Ink with a 2px Signal Blue underline and `aria-current="page"`. Below 768px the tabs take their own row and scroll sideways without a scrollbar.
 - **Right:** the signed-in email (from 1024px), the IT / EN switch, and an outline "Sign out".
 - Narrow pages (Operators) keep the full-width header and left-align their content under it.
 - The zones editor keeps its own full-screen header with a "← Restaurants" link.
@@ -240,11 +240,20 @@ Page title (24px, 700) with a one-line Quiet Ink description, and the page's one
 ### Setup checklist (signature)
 How the console shows whether a restaurant can take orders. The steps come from `lib/readiness.ts` and mirror the storefront's `restaurant_can_take_orders`: Owner, Active domain, SMS sender, Order email, Payout account (only blocking when card is the only payment method), Delivery zones, Opening hours.
 - **In the restaurants table:** "Ready to take orders" in green-700 with a check icon, or "Needs setup · 4 of 7 done" with an amber alert icon and a 12px "Missing: …" line. A "Needs setup (n)" filter sits next to the search.
-- **In the edit dialog:** a Well-tinted box at the top with a two-column list. Done steps get a green check and Quiet Ink text; open steps get an amber circle (grey if not blocking) and a "Set it below →" link that scrolls to that section, "Open the zones editor →", or a note when the owner does it (opening hours).
-- **After creating a restaurant:** the same list, with "Continue setup" opening the edit dialog.
+- **On the setup page (from 1024px):** the section menu carries it: a readiness summary on top, then each section with a green check, amber circle (blocking step open) or grey circle (non-blocking open). Each section's open steps also show under its title in amber.
+- **On the setup page (below 1024px):** a Well-tinted box at the top with a two-column list. Done steps get a green check and Quiet Ink text; open steps get an amber circle (grey if not blocking) and a "Set it below →" link that scrolls to that section and puts the cursor in its first empty field, "Open the zones editor →", or a note when the owner does it (opening hours).
+- **After creating a restaurant:** the same list, with "Continue setup" opening the restaurant's setup page.
+
+### Restaurant setup page (signature)
+`/businesses/[id]` (`components/superadmin/restaurant-setup.tsx`): one restaurant's setup as a page with its own link and back button, not a dialog. Restaurant names and "Configura" in the list link to it; the zones editor's back link returns to it.
+- **Layout:** a 14rem sticky section menu on the left (Dati, Domini, Grafica e nomi, Ordini online, Conto incassi, Personale e titolari, Fornitori, Configurazione, Zone di consegna) that follows the section in view, next to one column of section panels (Panel on Floor, 12px radius, h2 titles).
+- **One save model: each section saves on its own.** Field sections (details, branding, orders, configuration) have their own Save; Enter in a field saves that section. Their save bar appears only once the section differs from what the server holds: amber "Modifiche non salvate", a ghost "Annulla" that restores the section, and the Signal Blue Save. After saving it reads "Salvato" in green. List sections (domains, staff, payout account) act at once and say so in their header ("Le modifiche si applicano subito"). A one-line sentence above the panels states this rule.
+- **Leaving:** a section with unsaved changes gets an amber dot in the menu; following any in-app link asks "Uscire senza salvare?" naming the sections, and the browser asks on reload or close.
+- **Stored problems show on arrival:** a value that fails the section's check (an email address in "Nome mittente email", an invalid SMS sender) is flagged when the page opens, not only on Save.
+- **Providers:** one line per provider (on/off, "tariffe predefinite" or "2 tariffe proprie", lock state) with a ghost "Personalizza" that opens its fee fields; one "Salva fornitori" covers every provider changed. The platform's provider list itself lives on its own page, `/providers`.
 
 ### Confirmation dialog
-One pattern (`useConfirm`, `components/superadmin/confirm-dialog.tsx`) for every change that takes effect at once and can't simply be undone: removing staff or a domain, disabling a domain, owner changes, deactivating an operator, hiding all of a restaurant's sections, creating a payout account, discarding unsaved edits.
+One pattern (`useConfirm`, `components/superadmin/confirm-dialog.tsx`) for every change that takes effect at once and can't simply be undone: removing staff or a domain, disabling a domain, owner changes, deactivating an operator, hiding all of a restaurant's sections, creating a payout account, leaving the setup page with unsaved sections, and in the zones editor moving the centre, discarding the draft, importing and restoring.
 - **Title:** a question that names the person, address or restaurant ("Remove Mario Rossi from Trattoria da Mario?").
 - **Body:** what happens and when, in Quiet Ink 14px; say whether it can be undone and the safer alternative if there is one.
 - **Buttons:** Cancel (outline) has focus when it opens, so Enter never confirms by accident; the confirm button is Alarm Red for removals, Signal Blue otherwise. Focus returns to the control that opened it.

@@ -112,11 +112,11 @@ export function PayoutAccountCell({
         </span>
       </button>
       <div className="flex flex-wrap gap-1">
-        {/* "Off" is the normal state while the owner finishes Stripe onboarding: amber, not red. */}
-        <Badge variant={account.charges_enabled ? "secondary" : "outline"} className={account.charges_enabled ? undefined : "border-amber-600/50 text-amber-700"}>
+        {/* Green when Stripe has switched it on; "off" is the normal state while the owner finishes onboarding: amber, not red. */}
+        <Badge variant="outline" className={account.charges_enabled ? "border-green-700/40 text-green-700" : "border-amber-600/50 text-amber-700"}>
           {account.charges_enabled ? t.payout.chargesOn : t.payout.chargesOff}
         </Badge>
-        <Badge variant={account.payouts_enabled ? "secondary" : "outline"} className={account.payouts_enabled ? undefined : "border-amber-600/50 text-amber-700"}>
+        <Badge variant="outline" className={account.payouts_enabled ? "border-green-700/40 text-green-700" : "border-amber-600/50 text-amber-700"}>
           {account.payouts_enabled ? t.payout.payoutsOn : t.payout.payoutsOff}
         </Badge>
         {account.outstanding_requirements > 0 && (

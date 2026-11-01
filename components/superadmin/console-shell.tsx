@@ -13,6 +13,7 @@ const NAV = [
   { href: "/", key: "restaurants" },
   { href: "/operators", key: "operators" },
   { href: "/features", key: "sections" },
+  { href: "/providers", key: "providers" },
 ] as const
 
 // The frame every console page shares: product name, section nav, the
@@ -37,7 +38,8 @@ export function ConsoleShell({
     router.refresh()
   }
 
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href))
+  // A restaurant's own pages (/businesses/…) belong under Restaurants.
+  const isActive = (href: string) => (href === "/" ? pathname === "/" || pathname.startsWith("/businesses/") : pathname.startsWith(href))
   // One width on every page so the header never moves; narrow pages
   // left-align under it, wide tables scroll inside their own card.
   const container = "max-w-6xl"

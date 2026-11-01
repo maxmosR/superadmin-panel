@@ -125,7 +125,7 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-          <CardTitle className="text-base">{loading ? t.common.loading : t.sections.count(rows.length)}</CardTitle>
+          <CardTitle className="text-base">{loading ? null : t.sections.count(rows.length)}</CardTitle>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <Button
               size="sm"

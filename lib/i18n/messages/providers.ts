@@ -1,7 +1,6 @@
 // Providers: platform list (under the restaurants table) and per-restaurant editor.
 export const en = {
   title: "Providers",
-  description: "Sales channels and payment providers businesses can use, with their default rates.",
   add: "Add provider",
   count: (n: number) => (n === 1 ? "1 provider" : `${n} providers`),
   loading: "Loading providers…",
@@ -54,11 +53,20 @@ export const en = {
   saveOne: "Save {name}",
   savedOne: "{name} saved.",
   saveOneFailed: "{name}: couldn't save ({reason}).",
+  pageDescription: "The platform's list of sales channels and payment providers, with the default rates every restaurant starts from.",
+  off: "off",
+  usesDefaults: "default rates",
+  customCount: (n: number) => (n === 1 ? "1 own rate" : `${n} own rates`),
+  locked: "IVA & tax locked",
+  customize: "Customise",
+  hideCustom: "Done",
+  customizeLabel: "Customise {name}",
+  saveAll: "Save providers",
+  savedAll: "Providers saved.",
 }
 
 export const it: typeof en = {
   title: "Fornitori",
-  description: "Canali di vendita e fornitori di pagamento che i ristoranti possono usare, con le loro tariffe predefinite.",
   add: "Aggiungi fornitore",
   count: (n: number) => (n === 1 ? "1 fornitore" : `${n} fornitori`),
   loading: "Caricamento fornitori…",
@@ -110,4 +118,14 @@ export const it: typeof en = {
   saveOne: "Salva {name}",
   savedOne: "{name} salvato.",
   saveOneFailed: "{name}: impossibile salvare ({reason}).",
+  pageDescription: "L'elenco della piattaforma di canali di vendita e fornitori di pagamento, con le tariffe predefinite da cui parte ogni ristorante.",
+  off: "spento",
+  usesDefaults: "tariffe predefinite",
+  customCount: (n: number) => (n === 1 ? "1 tariffa propria" : `${n} tariffe proprie`),
+  locked: "IVA e tasse bloccate",
+  customize: "Personalizza",
+  hideCustom: "Fatto",
+  customizeLabel: "Personalizza {name}",
+  saveAll: "Salva fornitori",
+  savedAll: "Fornitori salvati.",
 }

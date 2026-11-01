@@ -8,7 +8,9 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle2, Loader2, MapPinned, Pencil, Plus, Search } from "lucide-react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { Loader2, MapPinned, Pencil, Plus, Search } from "lucide-react"
 import { domainDisplayHost } from "@/lib/domains"
 import { getReadiness } from "@/lib/readiness"
 import { ConsoleShell, PageHead } from "./console-shell"
@@ -16,8 +18,6 @@ import { useI18n } from "@/lib/i18n/client"
 import { apiError } from "@/lib/i18n/api-error"
 import { SetupSummary } from "./setup-status"
 import { CreateBusinessDialog } from "./create-business-dialog"
-import { EditBusinessDialog, type EditFocus } from "./edit-business-dialog"
-import { ProvidersManager } from "./providers-manager"
 import { PayoutAccountCell, type PayoutAccountSummary } from "./payout-account-cell"
 
 export interface BusinessRow {
@@ -75,25 +75,15 @@ export function SuperAdminDashboard({
   const [businesses, setBusinesses] = useState<BusinessRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<{ row: BusinessRow; focus?: EditFocus; trigger?: HTMLElement } | null>(null)
-  // Short confirmation after a save, read out by screen readers too.
-  const [notice, setNotice] = useState("")
-  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const announce = useCallback((text: string) => {
-    setNotice(text)
-    if (noticeTimer.current) clearTimeout(noticeTimer.current)
-    noticeTimer.current = setTimeout(() => setNotice(""), 6000)
-  }, [])
-  // "Continue setup" clicked before the new restaurant is in the list: open it on the next load.
-  const pendingEditId = useRef<string | null>(null)
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<"all" | "setup">("all")
 
   const hasLoaded = useRef(false)
   const load = useCallback(async () => {
-    // Only the first load shows the spinner; refreshes after a save keep the
-    // table (and the focused row button) in place.
+    // Only the first load shows the spinner; a refresh after creating a
+    // restaurant keeps the table in place.
     if (!hasLoaded.current) setLoading(true)
     setError("")
     try {
@@ -106,15 +96,6 @@ export function SuperAdminDashboard({
       const rows: BusinessRow[] = j.businesses ?? []
       hasLoaded.current = true
       setBusinesses(rows)
-      // Keep an open edit dialog on fresh data (staff or payout changes reload the list).
-      const pending = pendingEditId.current && rows.find((r) => r.business_id === pendingEditId.current)
-      if (pending) pendingEditId.current = null
-      setEditing((e) => {
-        if (pending) return { row: pending }
-        if (!e) return e
-        const row = rows.find((r) => r.business_id === e.row.business_id)
-        return row ? { ...e, row } : null
-      })
     } catch (e) {
       // fetch() itself throws a TypeError when the server can't be reached.
       setError(e instanceof Error && !(e instanceof TypeError) ? e.message : tRef.current.common.network)
@@ -160,10 +141,6 @@ export function SuperAdminDashboard({
         }
       />
 
-      <p role="status" aria-live="polite" className={notice ? "mb-4 flex items-center gap-2 text-sm font-medium text-green-700" : "sr-only"}>
-        {notice && <CheckCircle2 className="h-4 w-4" aria-hidden />}
-        {notice}
-      </p>
 
       {error && (
         <Alert variant="destructive" className="mb-4">
@@ -259,7 +236,7 @@ export function SuperAdminDashboard({
                         <PayoutAccountCell businessId={b.business_id} businessName={b.business_name} account={b.payout_account ?? null} onCreated={load} />
                       </TableCell>
                       <TableCell className="py-3 pr-6 text-right">
-                        <RowActions row={b} ready={readiness.ready} onEdit={(trigger) => setEditing({ row: b, trigger })} className="justify-end" />
+                        <RowActions row={b} ready={readiness.ready} className="justify-end" />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -283,15 +260,13 @@ export function SuperAdminDashboard({
                       <PayoutAccountCell businessId={b.business_id} businessName={b.business_name} account={b.payout_account ?? null} onCreated={load} />
                     </dd>
                   </dl>
-                  <RowActions row={b} ready={readiness.ready} onEdit={(trigger) => setEditing({ row: b, trigger })} className="-ml-3" />
+                  <RowActions row={b} ready={readiness.ready} className="-ml-3" />
                 </li>
               ))}
             </ul>
           </>
         )}
       </Card>
-
-      <ProvidersManager />
 
       <CreateBusinessDialog
         open={dialogOpen}
@@ -300,21 +275,7 @@ export function SuperAdminDashboard({
         onCreated={() => {
           void load()
         }}
-        onContinue={(id) => {
-          const row = businesses.find((b) => b.business_id === id)
-          if (row) setEditing({ row })
-          else pendingEditId.current = id
-        }}
-      />
-
-      <EditBusinessDialog
-        business={editing?.row ?? null}
-        focus={editing?.focus}
-        returnFocus={editing?.trigger}
-        onDone={(name) => announce(fmt(t.dashboard.saved, { name }))}
-        onOpenChange={(open) => !open && setEditing(null)}
-        rootDomain={rootDomain}
-        onSaved={load}
+        onContinue={(id) => router.push(`/businesses/${id}`)}
       />
     </ConsoleShell>
   )
@@ -324,7 +285,12 @@ function RestaurantName({ row }: { row: BusinessRow }) {
   const { t, fmt, locale } = useI18n()
   return (
     <div>
-      <div className="font-medium">{row.business_name}</div>
+      <Link
+        href={`/businesses/${row.business_id}`}
+        className="rounded-sm font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      >
+        {row.business_name}
+      </Link>
       <div className="mt-0.5 font-mono text-xs text-muted-foreground">{row.slug}</div>
       <div className="text-xs text-muted-foreground">
         {fmt(t.dashboard.created, { currency: row.config?.currency ?? "EUR", date: formatDate(row.created_at, locale) })}
@@ -358,37 +324,29 @@ function DomainList({ domains, rootDomain }: { domains: BusinessRow["domains"]; 
   )
 }
 
-function RowActions({
-  row,
-  ready,
-  onEdit,
-  className,
-}: {
-  row: BusinessRow
-  ready: boolean
-  onEdit: (trigger: HTMLElement) => void
-  className?: string
-}) {
+function RowActions({ row, ready, className }: { row: BusinessRow; ready: boolean; className?: string }) {
   const { t, fmt } = useI18n()
   return (
     <div className={"flex items-center gap-1 " + (className ?? "")}>
-      <Button variant={ready ? "ghost" : "outline"} size="sm" data-edit-restaurant={row.business_id} onClick={(e) => onEdit(e.currentTarget)}>
-        {ready ? (
-          <>
-            <Pencil className="h-4 w-4" aria-hidden />
-            {t.common.edit}
-          </>
-        ) : (
-          t.common.continueSetup
-        )}
-        <span className="sr-only"> {row.business_name}</span>
+      <Button variant={ready ? "ghost" : "outline"} size="sm" asChild>
+        <Link href={`/businesses/${row.business_id}`}>
+          {ready ? (
+            <>
+              <Pencil className="h-4 w-4" aria-hidden />
+              {t.common.edit}
+            </>
+          ) : (
+            t.common.continueSetup
+          )}
+          <span className="sr-only"> {row.business_name}</span>
+        </Link>
       </Button>
       <Button variant="ghost" size="sm" asChild>
-        <a href={`/businesses/${row.business_id}/zones`}>
+        <Link href={`/businesses/${row.business_id}/zones`}>
           <MapPinned className="h-4 w-4" aria-hidden />
           {t.dashboard.zones}
           <span className="sr-only">{fmt(t.dashboard.zonesFor, { name: row.business_name })}</span>
-        </a>
+        </Link>
       </Button>
     </div>
   )

@@ -277,6 +277,14 @@ describe("operator guard on every API handler", () => {
     })
   })
 
+  it("GET /api/businesses refuses a malformed business_id before the service-role client", async () => {
+    lookup.mockResolvedValue({ status: "operator", admin: { userId: "u1", email: "op@example.com" } })
+    const res = await businesses.GET(new Request("http://localhost/api/businesses?business_id=nope"))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: "invalid_business_id" })
+    expect(adminClient).not.toHaveBeenCalled()
+  })
+
   it("GET /api/me confirms an operator", async () => {
     lookup.mockResolvedValue({ status: "operator", admin: { userId: "u1", email: "op@example.com" } })
     const res = await me.GET()

@@ -2,7 +2,7 @@
 export const en = {
   steps: { center: "1. Center", rings: "2. Rings", cut: "3. Cut", pieces: "4. Pieces", test: "5. Test", publish: "6. Publish", history: "7. History" },
   stepsLabel: "Editor steps",
-  back: "Restaurants",
+  back: "Restaurant setup",
   title: "Delivery zones · {name}",
   liveVersion: "Live: version {v}",
   nothingPublished: "Nothing published",
@@ -204,7 +204,7 @@ export const en = {
 export const it: typeof en = {
   steps: { center: "1. Centro", rings: "2. Anelli", cut: "3. Tagli", pieces: "4. Zone", test: "5. Prova", publish: "6. Pubblica", history: "7. Storico" },
   stepsLabel: "Passaggi dell'editor",
-  back: "Ristoranti",
+  back: "Configurazione",
   title: "Zone di consegna · {name}",
   liveVersion: "Online: versione {v}",
   nothingPublished: "Niente pubblicato",

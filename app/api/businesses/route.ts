@@ -4,18 +4,23 @@ import { createAdminClient } from "@/lib/supabase-admin"
 import { normalizeDomain } from "@/lib/domains"
 import { SLUG_RE, SMS_SENDER_RE, assignRoleAsOperator, findOrCreateIdentity, parseIdentifier } from "@/lib/roles"
 import { NO_ZONES, zoneBadges, type ZoneSetRow } from "@/lib/zones/badge"
+import { isUuid } from "@/lib/zones/validate"
 
 export const dynamic = "force-dynamic"
 
 // ---------------------------------------------------------------------------
 // GET /api/businesses — list all businesses with domains, owners count and readiness.
 // ---------------------------------------------------------------------------
-export async function GET() {
+// Optional ?business_id=<uuid>: just that restaurant (the setup page).
+export async function GET(request?: Request) {
   const guard = await requireOperator()
   if (guard.response) return guard.response
 
+  const only = request ? new URL(request.url).searchParams.get("business_id") : null
+  if (only !== null && !isUuid(only)) return NextResponse.json({ error: "invalid_business_id" }, { status: 400 })
+
   const supabase = createAdminClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from("businesses")
     .select(
       "business_id, slug, business_name, name_abbreviation, tax_id, address, phone, email, logo_url, " +
@@ -26,21 +31,27 @@ export async function GET() {
     )
     .eq("deleted", false)
     .order("created_at", { ascending: false })
+  if (only) query = query.eq("business_id", only)
+  const { data, error } = await query
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Delivery zone badges: one query for every restaurant's draft and live set.
-  const { data: zoneRows, error: zoneErr } = await supabase
+  let zoneQuery = supabase
     .from("delivery_zone_sets")
     .select("business_id, status, version, based_on_version, created_at, updated_at")
     .in("status", ["draft", "published"])
+  if (only) zoneQuery = zoneQuery.eq("business_id", only)
+  const { data: zoneRows, error: zoneErr } = await zoneQuery
   if (zoneErr) console.error(JSON.stringify({ event: "zone_badges_failed", code: zoneErr.code ?? null }))
   const badges = zoneBadges((zoneRows ?? []) as ZoneSetRow[])
 
   // Stripe connected accounts (no secrets in the table).
-  const { data: payoutRows, error: payoutErr } = await supabase
+  let payoutQuery = supabase
     .from("payout_accounts")
     .select("business_id, stripe_account_id, charges_enabled, payouts_enabled, details_submitted, requirements")
+  if (only) payoutQuery = payoutQuery.eq("business_id", only)
+  const { data: payoutRows, error: payoutErr } = await payoutQuery
   if (payoutErr) console.error(JSON.stringify({ event: "payout_accounts_failed", code: payoutErr.code ?? null }))
   const payouts = new Map<string, any>((payoutRows ?? []).map((p: any) => [p.business_id, p]))
 
