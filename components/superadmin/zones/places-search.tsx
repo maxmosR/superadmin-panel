@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
-import { loadGoogleMaps } from "@/lib/google-maps/loader"
+import { loadGoogleMaps, onMapsLoaded } from "@/lib/google-maps/loader"
 import type { LatLng } from "@/lib/zones/types"
 
 export interface PickedPlace {
@@ -39,17 +39,24 @@ export function PlacesSearch({ placeholder, bias, onPick, disabled }: Props) {
 
   useEffect(() => {
     mounted.current = true
-    loadGoogleMaps()
-      .then(async (g) => {
-        const places = (await g.maps.importLibrary("places")) as google.maps.PlacesLibrary
-        if (!mounted.current) return
-        placesRef.current = places
-        setReady(true)
-      })
-      .catch(() => {
-        // The map shows the load error; the field just stays disabled.
-      })
+    const start = () =>
+      loadGoogleMaps()
+        .then(async (g) => {
+          const places = (await g.maps.importLibrary("places")) as google.maps.PlacesLibrary
+          if (!mounted.current) return
+          placesRef.current = places
+          setReady(true)
+        })
+        .catch(() => {
+          // The map shows the load error; the field waits until the map reloads.
+        })
+    void start()
+    // After the map's "Reload map" succeeds, switch the field on too.
+    const off = onMapsLoaded(() => {
+      if (!placesRef.current) void start()
+    })
     return () => {
+      off()
       mounted.current = false
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
@@ -111,7 +118,8 @@ export function PlacesSearch({ placeholder, bias, onPick, disabled }: Props) {
     <div className="relative">
       <Input
         value={value}
-        placeholder={placeholder ?? "Search an address"}
+        placeholder={placeholder}
+        aria-label={placeholder}
         autoComplete="off"
         disabled={disabled || !ready}
         onChange={(e) => {

@@ -2,7 +2,7 @@
 name: BirraOra Operator Console
 description: The internal console where BirraOra operators set up restaurants, owners, domains, sections and delivery zones.
 colors:
-  signal-blue: "oklch(0.65 0.2 250)"
+  signal-blue: "oklch(0.54 0.19 255)"
   signal-blue-foreground: "oklch(0.98 0 0)"
   alarm-red: "oklch(0.6 0.25 15)"
   go-green: "oklch(0.6 0.2 140)"
@@ -127,7 +127,7 @@ Density is moderate to high. Tables and forms use 14px body text and 12px second
 A hue-free grey scale carries the whole interface; four saturated colours are reserved for action and state.
 
 ### Primary
-- **Signal Blue** (`signal-blue`): the one primary action per view (e.g. "New business", "Publish"), focus rings (at 50% alpha, 3px), selected tabs and checkbox accents. Same value in light and dark.
+- **Signal Blue** (`signal-blue`): the one primary action per view (e.g. "New business", "Publish"), focus rings (at 50% alpha, 3px), selected tabs and checkbox accents. In dark mode it lifts to `oklch(0.65 0.2 250)` and button text turns dark, so the label stays above 4.5:1 on both.
 
 ### Tertiary (state colours)
 - **Alarm Red** (`alarm-red`): destructive buttons, error alerts, "Not set up" badges, blocker counts on zone steps, unsaved/failed save lines.
@@ -201,9 +201,11 @@ Plain and compact.
 - **Destructive:** Alarm Red fill, white text. Use for the final confirm of a destructive action, not for the row button that opens it.
 - **Focus:** 3px Signal Blue ring at 50% alpha plus a ring-coloured border. **Disabled:** 50% opacity, no pointer events.
 - **Icons:** lucide-react at 16px, placed before the label with an 8px gap.
+- **Selected state:** a toggle or tab that is on (zones step tabs, Draft / Live / Both, "Draw cut line", filters) uses the `secondary` grey fill with `aria-pressed` or `aria-current`, never the Signal Blue fill. Blue stays for the one action per view.
+- **Secondary adds:** "Add" buttons inside a dialog or section (domains, staff, providers) are outline, so the dialog's Save stays the only blue button.
 
 ### Chips and badges
-- **Badge:** 12px medium text, 6px radius, 2px × 8px padding. Variants: `secondary` (Chip Grey; neutral facts like "Live v3", "none"), `destructive` (Alarm Red; "Not set up"), `outline` with amber border and text ("Unpublished changes").
+- **Badge:** 12px medium text, 6px radius, 2px × 8px padding. Variants: `secondary` (Chip Grey; neutral facts like "primary", "archived"), `destructive` (Alarm Red; blocker counts), `outline` with amber border and text ("Unpublished changes"), `outline` with green border and text for a live zone version. No Signal Blue badges.
 - **Readiness chip:** pill-shaped, amber border at 40% alpha, amber-700 text, for setup gaps under a restaurant name ("no owner", "no SMS sender").
 
 ### Cards / Containers
@@ -221,12 +223,14 @@ Plain and compact.
 
 ### Tables
 14px text, header row in Quiet Ink at 500 weight, 1px Hairline between rows, row hover in Well at ~50%. The first column holds the record name in 500 weight with a 12px Quiet Ink line under it (abbreviation or slug). Wide matrices keep the first column sticky.
+- **Restaurants on phones:** below 768px the restaurants table becomes a stacked list: name block, setup summary, a two-column Domains / Payout list, then the row actions. The same parts (`RestaurantName`, `DomainList`, `RowActions`) render both layouts.
+- **Sections matrix:** visible sections are plain mid-grey ticks; a hidden section's cell is filled `amber-50` with "Hidden" under the box, and the row header says "3 hidden". The exceptions are what the operator scans for, so they carry the colour. Show all / Hide all sit in the sticky name column, not off-screen.
 
 ### Navigation
 One shared header on every console page (`ConsoleShell`), on Panel with a bottom Hairline, 1152px wide on every page so it never moves; wide tables such as the sections matrix scroll inside their own card:
 - **Left:** a 20px ShieldCheck icon in Signal Blue and "Operator console" in 600 weight, linking home.
 - **Sections:** Restaurants, Operators, Admin panel sections, as 44px-tall text tabs in Quiet Ink. The current page is Ink with a 2px Signal Blue underline and `aria-current="page"`. Below 768px the tabs take their own row and scroll sideways without a scrollbar.
-- **Right:** the signed-in email (from 1024px) and an outline "Sign out".
+- **Right:** the signed-in email (from 1024px), the IT / EN switch, and an outline "Sign out".
 - Narrow pages (Operators) keep the full-width header and left-align their content under it.
 - The zones editor keeps its own full-screen header with a "← Restaurants" link.
 
@@ -247,10 +251,15 @@ One pattern (`useConfirm`, `components/superadmin/confirm-dialog.tsx`) for every
 - Reversible, low-stakes changes (showing sections, activating an operator, non-owner role changes) don't ask.
 
 
+### Autosave status
 A 12px line next to the step controls in the zones editor: spinner + "Saving…" in Quiet Ink, "Saved" in Quiet Ink, "Not saved" in Alarm Red with an inline underlined "Retry", and a red conflict message when another window changed the draft. Reuse this pattern wherever the console saves without an explicit button.
 
 ### Zone step panel (signature)
 A row of step tabs (Center, Rings, Cut, Pieces, Test, Publish, History) with red count badges for blockers, above a scrolling panel. Ring rows read as a sentence ("up to [km] km → € [fee]") with the ring's map colour as a 12px dot.
+- **When the map fails:** the map area alone shows "The map stopped working" on Well with a MapPinOff icon, the reason in 12px Quiet Ink, and an outline "Reload map" that remounts only the map. The step panel and autosave keep working. Any other page crash lands on `app/error.tsx` with "Try again" and a way back to Restaurants.
+
+### Language
+Italian is the default, English the alternative, matching every BirraOra surface. The choice is a cookie (`console_lang`) so the server renders `<html lang>` and the page title in it from the first byte; without a cookie an English-first browser gets English. All copy lives in `lib/i18n/messages/*.ts`, one file per screen, with TypeScript forcing the Italian file to match the English one key for key (`tests/i18n.test.ts` also catches untranslated or empty strings). Database check messages are translated by their code. Budget about 30% more width for Italian: labels such as "Continua la configurazione" were shortened ("Configura") where a table column would otherwise squeeze.
 
 ## Do's and Don'ts
 
@@ -268,7 +277,7 @@ A row of step tabs (Center, Rings, Cut, Pieces, Test, Publish, History) with red
 ### Don't:
 - **Don't** use colour for decoration, gradients or tinted backgrounds on neutral content.
 - **Don't** add a second accent hue; status colours are for state only.
-- **Don't** put small white text on Signal Blue: the pair is about 3.2:1, so keep it to 14px medium button labels and larger.
+- **Don't** lighten Signal Blue to make it friendlier: at `oklch(0.54 0.19 255)` white text reads 4.8:1, and anything lighter drops a primary button below 4.5:1.
 - **Don't** add new 10–11px text; 12px is the floor.
 - **Don't** separate areas with shadows; use a hairline or the tonal step.
 - **Don't** show BirraOra or console styling on anything a restaurant's customers see; this system is for the operator console only.

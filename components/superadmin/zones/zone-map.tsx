@@ -18,8 +18,9 @@ import {
   type GeoJSONStoreFeatures,
 } from "terra-draw"
 import { TerraDrawGoogleMapsAdapter } from "terra-draw-google-maps-adapter"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { loadGoogleMaps, mapId, onMapsAuthFailure, MAPS_DOMAIN_ERROR } from "@/lib/google-maps/loader"
+import { MapProblem } from "./map-boundary"
+import { loadGoogleMaps, mapId, onMapsAuthFailure, MAPS_DOMAIN_ERROR, MAPS_KEY_MISSING, MAPS_LOAD_FAILED } from "@/lib/google-maps/loader"
+import { useI18n } from "@/lib/i18n/client"
 import { destination, distanceM } from "@/lib/zones/geo"
 import { formatEuro, snapRadius } from "@/lib/zones/units"
 import type { EditorCutLine, EditorRule } from "@/lib/zones/editor-state"
@@ -131,16 +132,28 @@ export function ZoneMap(props: ZoneMapProps) {
   const [drawReady, setDrawReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Latest props for event handlers registered once.
+  // Latest props and strings for event handlers registered once.
+  const { t } = useI18n()
   const live = useRef(props)
+  const tRef = useRef(t)
   useEffect(() => {
     live.current = props
+    tRef.current = t
   })
+  // The loader words its failures in English; show them in the operator's language.
+  const mapsError = (message: string | undefined) =>
+    message === MAPS_KEY_MISSING
+      ? tRef.current.zones.map.keyMissing
+      : message === MAPS_LOAD_FAILED
+        ? tRef.current.zones.map.loadFailed
+        : message === MAPS_DOMAIN_ERROR || !message
+          ? tRef.current.zones.map.domain
+          : message
 
   // ---- init ----------------------------------------------------------------
   useEffect(() => {
     let cancelled = false
-    const off = onMapsAuthFailure(() => setError(MAPS_DOMAIN_ERROR))
+    const off = onMapsAuthFailure(() => setError(mapsError(MAPS_DOMAIN_ERROR)))
     loadGoogleMaps()
       .then(async (g) => {
         await Promise.all([g.maps.importLibrary("maps"), g.maps.importLibrary("marker")])
@@ -189,7 +202,7 @@ export function ZoneMap(props: ZoneMapProps) {
         await new Promise<void>((resolve) => google.maps.event.addListenerOnce(map, "idle", () => resolve()))
         if (cancelled) return
         if (!map.getDiv().querySelector('div[style*="z-index: 3;"]')) {
-          setError("The map loaded, but drawing could not attach to it. Reload the page.")
+          setError(tRef.current.zones.map.drawAttach)
           return
         }
 
@@ -256,7 +269,7 @@ export function ZoneMap(props: ZoneMapProps) {
         drawRef.current = draw
         setReady(true)
       })
-      .catch((e: Error) => !cancelled && setError(e.message || MAPS_DOMAIN_ERROR))
+      .catch((e: Error) => !cancelled && setError(mapsError(e.message)))
     return () => {
       cancelled = true
       off()
@@ -361,7 +374,7 @@ export function ZoneMap(props: ZoneMapProps) {
       const color = ringColor(i + 1)
       if (!o) {
         const circle = new google.maps.Circle({ map, clickable: false, fillOpacity: 0, strokeWeight: 2, zIndex: 1 })
-        const handle = new google.maps.marker.AdvancedMarkerElement({ map, content: dotEl(color, 14), title: "Drag to change the distance" })
+        const handle = new google.maps.marker.AdvancedMarkerElement({ map, content: dotEl(color, 14), title: tRef.current.zones.map.dragDistance })
         const entry = { circle, handle, dragging: false }
         handle.addListener("dragstart", () => (entry.dragging = true))
         handle.addListener("drag", () => {
@@ -415,7 +428,7 @@ export function ZoneMap(props: ZoneMapProps) {
             }),
           )
         }
-        viewOverlays.current.push(new google.maps.marker.AdvancedMarkerElement({ map, position: { lat, lng }, content: labelEl("no delivery", "none") }))
+        viewOverlays.current.push(new google.maps.marker.AdvancedMarkerElement({ map, position: { lat, lng }, content: labelEl(tRef.current.zones.map.noDelivery, "none") }))
       } else if (p.rule_id) {
         viewOverlays.current.push(
           new google.maps.marker.AdvancedMarkerElement({ map, position: { lat, lng }, content: labelEl(formatEuro(p.fee), "fee") }),
@@ -500,7 +513,7 @@ export function ZoneMap(props: ZoneMapProps) {
       let m = markers.get(u.id)
       const color = u.mode === "excluded" ? "#374151" : u.mode === "custom_fee" ? "#2563eb" : "#16a34a"
       if (!m) {
-        m = new google.maps.marker.AdvancedMarkerElement({ map, content: pinEl(color), title: u.label ?? "Piece setting" })
+        m = new google.maps.marker.AdvancedMarkerElement({ map, content: pinEl(color), title: u.label ?? tRef.current.zones.map.pieceSetting })
         const id = u.id
         const marker = m
         m.addListener("dragend", () => {
@@ -531,7 +544,7 @@ export function ZoneMap(props: ZoneMapProps) {
     }
     if (!testMarker.current) {
       const pin = new google.maps.marker.PinElement({ background: "#111827", borderColor: "#ffffff", glyphColor: "#ffffff" })
-      testMarker.current = new google.maps.marker.AdvancedMarkerElement({ content: pin.element, title: "Tested point", zIndex: 10 })
+      testMarker.current = new google.maps.marker.AdvancedMarkerElement({ content: pin.element, title: tRef.current.zones.map.testedPoint, zIndex: 10 })
     }
     testMarker.current.position = props.testPoint
     testMarker.current.map = map
@@ -574,18 +587,14 @@ export function ZoneMap(props: ZoneMapProps) {
     }
   }, [ready, props.focus])
 
+  // Hand the reason to MapBoundary, which shows it with a retry.
+  if (error) throw new MapProblem(error)
+
   return (
     <div className="relative h-full min-h-[420px] w-full overflow-hidden rounded-md border bg-muted">
       <div ref={divRef} className="absolute inset-0" />
-      {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/95 p-6">
-          <Alert variant="destructive" className="max-w-md">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        </div>
-      )}
       {!ready && !error && (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading map…</div>
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground" role="status">{t.zones.map.loading}</div>
       )}
     </div>
   )

@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useI18n } from "@/lib/i18n/client"
 
 export interface ConfirmOptions {
   /** A question that names what is affected: "Remove Mario Rossi from Trattoria da Mario?" */
@@ -34,6 +35,7 @@ export interface ConfirmOptions {
  *   return <>{...}{dialog}</>
  */
 export function useConfirm() {
+  const { t } = useI18n()
   const [options, setOptions] = useState<ConfirmOptions | null>(null)
   const resolver = useRef<((ok: boolean) => void) | null>(null)
   const returnFocus = useRef<HTMLElement | null>(null)
@@ -80,7 +82,7 @@ export function useConfirm() {
             </DialogHeader>
             <DialogFooter>
               <Button ref={cancelRef} variant="outline" onClick={() => settle(false)}>
-                Cancel
+                {t.common.cancel}
               </Button>
               <Button variant={options.destructive ? "destructive" : "default"} onClick={() => settle(true)}>
                 {options.confirmLabel}

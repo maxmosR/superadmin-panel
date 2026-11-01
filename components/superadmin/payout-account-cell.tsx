@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Copy, Loader2 } from "lucide-react"
 import { useConfirm } from "./confirm-dialog"
+import { useI18n } from "@/lib/i18n/client"
+import { apiError } from "@/lib/i18n/api-error"
 
 export interface PayoutAccountSummary {
   stripe_account_id: string
@@ -20,11 +22,6 @@ export interface PayoutAccountSummary {
  * of outstanding requirements. Status changes arrive through Stripe's
  * `account.updated` webhook; reload to see them.
  */
-const PAYOUT_ERRORS: Record<string, string> = {
-  payment_gateway_unavailable: "Stripe didn't answer. Try again in a minute.",
-  unauthenticated: "Your session ended. Sign in again and retry.",
-}
-
 export function PayoutAccountCell({
   businessId,
   businessName,
@@ -37,6 +34,7 @@ export function PayoutAccountCell({
   onCreated: () => void
 }) {
   const { confirm, dialog } = useConfirm()
+  const { t, fmt } = useI18n()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [copied, setCopied] = useState(false)
@@ -44,15 +42,15 @@ export function PayoutAccountCell({
   if (!account) {
     const create = async () => {
       const ok = await confirm({
-        title: `Create a payout account for ${businessName ?? "this restaurant"}?`,
+        title: fmt(t.payout.createTitle, { name: businessName ?? t.payout.thisRestaurant }),
         description: (
           <>
-            <p>This creates the restaurant&apos;s Stripe connected account, where its card payments are paid out.</p>
-            <p>The owner then finishes Stripe&apos;s onboarding (identity and bank details). Until then, card payments stay off.</p>
-            <p>The account can&apos;t be deleted from the console.</p>
+            <p>{t.payout.createBody1}</p>
+            <p>{t.payout.createBody2}</p>
+            <p>{t.payout.createBody3}</p>
           </>
         ),
-        confirmLabel: "Create account",
+        confirmLabel: t.payout.createConfirm,
       })
       if (!ok) return
       setBusy(true)
@@ -64,10 +62,10 @@ export function PayoutAccountCell({
           body: JSON.stringify({ business_id: businessId }),
         })
         const j = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(PAYOUT_ERRORS[j.error] ?? `Couldn't create the account (${j.error || res.status}).`)
+        if (!res.ok) throw new Error(t.payout.errors[j.error] ?? fmt(t.payout.createFailed, { reason: apiError(t, j.error, res.status) }))
         onCreated()
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't create the account.")
+        setError(e instanceof Error && !(e instanceof TypeError) ? e.message : fmt(t.payout.createFailed, { reason: t.common.network }))
       } finally {
         setBusy(false)
       }
@@ -76,7 +74,7 @@ export function PayoutAccountCell({
       <div className="flex flex-col items-start gap-1">
         <Button size="sm" variant="outline" onClick={() => void create()} disabled={busy}>
           {busy && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
-          Create payout account
+          {t.payout.create}
         </Button>
         {error && (
           <span className="text-xs text-destructive" role="alert">
@@ -104,26 +102,26 @@ export function PayoutAccountCell({
         type="button"
         onClick={copy}
         className="flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
-        title="Copy account id"
-        aria-label={`Copy Stripe account id ${account.stripe_account_id}`}
+        title={t.payout.copyTitle}
+        aria-label={fmt(t.payout.copyLabel, { id: account.stripe_account_id })}
       >
         {account.stripe_account_id}
-        <Copy className="h-3 w-3" />
+        <Copy className="h-3 w-3" aria-hidden />
         <span className="font-sans text-green-700" aria-live="polite">
-          {copied ? "copied" : ""}
+          {copied ? t.payout.copied : ""}
         </span>
       </button>
       <div className="flex flex-wrap gap-1">
         {/* "Off" is the normal state while the owner finishes Stripe onboarding: amber, not red. */}
         <Badge variant={account.charges_enabled ? "secondary" : "outline"} className={account.charges_enabled ? undefined : "border-amber-600/50 text-amber-700"}>
-          charges {account.charges_enabled ? "on" : "off"}
+          {account.charges_enabled ? t.payout.chargesOn : t.payout.chargesOff}
         </Badge>
         <Badge variant={account.payouts_enabled ? "secondary" : "outline"} className={account.payouts_enabled ? undefined : "border-amber-600/50 text-amber-700"}>
-          payouts {account.payouts_enabled ? "on" : "off"}
+          {account.payouts_enabled ? t.payout.payoutsOn : t.payout.payoutsOff}
         </Badge>
         {account.outstanding_requirements > 0 && (
           <Badge variant="outline" className="border-amber-600/50 text-amber-700">
-            {account.outstanding_requirements} requirement{account.outstanding_requirements === 1 ? "" : "s"} due
+            {t.payout.due(account.outstanding_requirements)}
           </Badge>
         )}
       </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,6 +9,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Check, Loader2, Pencil, Plus, Star, Trash2, X } from "lucide-react"
 import { domainDisplayHost, domainKind } from "@/lib/domains"
 import { useConfirm } from "./confirm-dialog"
+import { useI18n } from "@/lib/i18n/client"
+import { apiError } from "@/lib/i18n/api-error"
 
 export interface DomainRow {
   domain: string
@@ -27,6 +29,12 @@ export interface DomainRow {
  */
 export function DomainManager({ businessId, rootDomain }: { businessId: string; rootDomain: string }) {
   const { confirm, dialog } = useConfirm()
+  const { t, fmt } = useI18n()
+  // Latest strings for the loader, so switching language doesn't refetch.
+  const tRef = useRef(t)
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
   const [domains, setDomains] = useState<DomainRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -45,10 +53,10 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
     try {
       const res = await fetch(`/api/businesses/domains?business_id=${encodeURIComponent(businessId)}`)
       const j = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(j.error || `Failed to load domains (${res.status})`)
+      if (!res.ok) throw new Error(apiError(tRef.current, j.error, res.status))
       setDomains(j.domains ?? [])
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load domains")
+      setError(e instanceof Error && !(e instanceof TypeError) ? e.message : tRef.current.domains.loadFailed)
     } finally {
       setLoading(false)
     }
@@ -68,11 +76,11 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
         headers: rest.body ? { "Content-Type": "application/json" } : undefined,
       })
       const j = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`)
+      if (!res.ok) throw new Error(apiError(t, j.error, res.status))
       await load()
       return true
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Request failed")
+      setError(e instanceof Error && !(e instanceof TypeError) ? e.message : t.common.network)
       return false
     } finally {
       setBusy(null)
@@ -118,9 +126,9 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
     const host = domainDisplayHost(row.domain, rootDomain)
     if (row.is_active) {
       const ok = await confirm({
-        title: `Disable ${host}?`,
-        description: "Customers and staff opening this address get a “not found” page straight away. You can enable it again at any time.",
-        confirmLabel: "Disable",
+        title: fmt(t.domains.disableTitle, { host }),
+        description: t.domains.disableBody,
+        confirmLabel: t.domains.disable,
         destructive: true,
       })
       if (!ok) return false
@@ -134,14 +142,14 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
   const remove = async (domain: string) => {
     const host = domainDisplayHost(domain, rootDomain)
     const ok = await confirm({
-      title: `Remove ${host}?`,
+      title: fmt(t.domains.removeTitle, { host }),
       description: (
         <>
-          <p>Customers and staff opening this address get a “not found” page straight away.</p>
-          <p>To bring it back you&apos;d add it again. If you might need it, disable it instead.</p>
+          <p>{t.domains.removeBody1}</p>
+          <p>{t.domains.removeBody2}</p>
         </>
       ),
-      confirmLabel: "Remove domain",
+      confirmLabel: t.domains.removeConfirm,
       destructive: true,
     })
     if (!ok) return false
@@ -154,11 +162,13 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
   return (
     <section className="space-y-3">
       <div>
-        <h3 className="text-sm font-semibold">Domains</h3>
+        <h3 className="text-sm font-semibold">{t.domains.title}</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          Every request is mapped to this business by its host. Add a bare label (<code>acme</code> →{" "}
-          <code>acme.{rootDomain}</code>) or a full hostname (<code>shop.acme.com</code>). The primary domain is the one
-          shown as the tenant&rsquo;s canonical address.
+          {t.domains.intro1}
+          <code>acme</code> → <code>acme.{rootDomain}</code>
+          {t.domains.intro2}
+          <code>shop.acme.com</code>
+          {t.domains.intro3}
         </p>
       </div>
 
@@ -170,13 +180,13 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
 
       {loading ? (
         <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading domains…
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          {t.domains.loading}
         </div>
       ) : (
         <ul className="divide-y rounded-md border">
           {domains.length === 0 && (
-            <li className="px-3 py-4 text-sm text-muted-foreground">No domains yet — add one below.</li>
+            <li className="px-3 py-4 text-sm text-muted-foreground">{t.domains.empty}</li>
           )}
           {domains.map((row) => {
             const isEditing = editingDomain === row.domain
@@ -187,18 +197,18 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                 {isEditing ? (
                   <div className="flex flex-1 flex-col gap-2 sm:flex-row">
                     <Input
-                      aria-label="Domain"
+                      aria-label={t.domains.domainField}
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value.toLowerCase())}
                       className="sm:max-w-[260px]"
-                      placeholder="acme or shop.acme.com"
+                      placeholder={t.domains.placeholder}
                     />
                     <Input
-                      aria-label="Note"
+                      aria-label={t.domains.noteField}
                       value={editLabel}
                       onChange={(e) => setEditLabel(e.target.value)}
                       className="sm:max-w-[200px]"
-                      placeholder="Note (optional)"
+                      placeholder={t.domains.notePlaceholder}
                     />
                   </div>
                 ) : (
@@ -206,13 +216,13 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate font-mono text-sm">{domainDisplayHost(row.domain, rootDomain)}</span>
                       {row.is_primary && (
-                        <Badge className="gap-1">
-                          <Star className="h-3 w-3" />
-                          primary
+                        <Badge variant="outline" className="gap-1">
+                          <Star className="h-3 w-3" aria-hidden />
+                          {t.common.primary}
                         </Badge>
                       )}
-                      {!row.is_active && <Badge variant="secondary">disabled</Badge>}
-                      <Badge variant="outline">{domainKind(row.domain)}</Badge>
+                      {!row.is_active && <Badge variant="secondary">{t.domains.disabled}</Badge>}
+                      <Badge variant="outline">{t.domains.kind[domainKind(row.domain)] ?? domainKind(row.domain)}</Badge>
                     </div>
                     {row.label && <div className="mt-0.5 truncate text-xs text-muted-foreground">{row.label}</div>}
                   </div>
@@ -223,10 +233,10 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
 
                   {isEditing ? (
                     <>
-                      <Button size="sm" variant="ghost" aria-label="Save domain" title="Save" onClick={() => handleSaveEdit(row.domain)} disabled={!!busy}>
+                      <Button size="sm" variant="ghost" aria-label={t.domains.save} title={t.common.save} onClick={() => handleSaveEdit(row.domain)} disabled={!!busy}>
                         <Check className="h-4 w-4" aria-hidden />
                       </Button>
-                      <Button size="sm" variant="ghost" aria-label="Cancel editing" title="Cancel" onClick={() => setEditingDomain(null)} disabled={!!busy}>
+                      <Button size="sm" variant="ghost" aria-label={t.domains.cancelEdit} title={t.common.cancel} onClick={() => setEditingDomain(null)} disabled={!!busy}>
                         <X className="h-4 w-4" aria-hidden />
                       </Button>
                     </>
@@ -236,8 +246,8 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                         <Button
                           size="sm"
                           variant="ghost"
-                          title="Make primary"
-                          aria-label={`Make ${domainDisplayHost(row.domain, rootDomain)} the primary domain`}
+                          title={t.domains.makePrimaryTitle}
+                          aria-label={fmt(t.domains.makePrimary, { host: domainDisplayHost(row.domain, rootDomain) })}
                           onClick={() => setPrimary(row.domain)}
                           disabled={!!busy}
                         >
@@ -247,8 +257,8 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                       <Button
                         size="sm"
                         variant="ghost"
-                        title="Rename / re-point"
-                        aria-label={`Edit ${domainDisplayHost(row.domain, rootDomain)}`}
+                        title={t.domains.editTitle}
+                        aria-label={fmt(t.domains.editLabel, { host: domainDisplayHost(row.domain, rootDomain) })}
                         onClick={() => {
                           setEditingDomain(row.domain)
                           setEditValue(row.domain)
@@ -261,8 +271,8 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                       <Button
                         size="sm"
                         variant="ghost"
-                        title={row.is_active ? "Disable" : "Enable"}
-                        aria-label={`${row.is_active ? "Disable" : "Enable"} ${domainDisplayHost(row.domain, rootDomain)}`}
+                        title={row.is_active ? t.domains.disable : t.domains.enable}
+                        aria-label={fmt(row.is_active ? t.domains.disableLabel : t.domains.enableLabel, { host: domainDisplayHost(row.domain, rootDomain) })}
                         onClick={() => void toggleActive(row)}
                         disabled={!!busy || row.is_primary}
                       >
@@ -271,8 +281,8 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
                       <Button
                         size="sm"
                         variant="ghost"
-                        title="Remove"
-                        aria-label={`Remove ${domainDisplayHost(row.domain, rootDomain)}`}
+                        title={t.common.remove}
+                        aria-label={fmt(t.domains.removeLabel, { host: domainDisplayHost(row.domain, rootDomain) })}
                         onClick={() => void remove(row.domain)}
                         disabled={!!busy || domains.length <= 1}
                       >
@@ -289,12 +299,12 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1 space-y-1.5">
-          <Label htmlFor={`${businessId}-new-domain`} className="text-sm">Add domain</Label>
+          <Label htmlFor={`${businessId}-new-domain`} className="text-sm">{t.domains.addDomain}</Label>
           <Input
             id={`${businessId}-new-domain`}
             value={newDomain}
             onChange={(e) => setNewDomain(e.target.value.toLowerCase())}
-            placeholder="acme or shop.acme.com"
+            placeholder={t.domains.placeholder}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault()
@@ -304,12 +314,12 @@ export function DomainManager({ businessId, rootDomain }: { businessId: string; 
           />
         </div>
         <div className="flex-1 space-y-1.5">
-          <Label htmlFor={`${businessId}-new-note`} className="text-sm">Note (optional)</Label>
-          <Input id={`${businessId}-new-note`} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="e.g. marketing site" />
+          <Label htmlFor={`${businessId}-new-note`} className="text-sm">{t.domains.noteOptional}</Label>
+          <Input id={`${businessId}-new-note`} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder={t.domains.notePlaceholderAdd} />
         </div>
-        <Button onClick={handleAdd} disabled={!!busy || !newDomain.trim()}>
+        <Button variant="outline" onClick={handleAdd} disabled={!!busy || !newDomain.trim()}>
           {busy === "add" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-          Add
+          {t.common.add}
         </Button>
       </div>
       {dialog}

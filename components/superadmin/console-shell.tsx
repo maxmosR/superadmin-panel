@@ -7,11 +7,12 @@ import { LogOut, ShieldCheck } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { LanguageSwitch, useI18n } from "@/lib/i18n/client"
 
 const NAV = [
-  { href: "/", label: "Restaurants" },
-  { href: "/operators", label: "Operators" },
-  { href: "/features", label: "Admin panel sections" },
+  { href: "/", key: "restaurants" },
+  { href: "/operators", key: "operators" },
+  { href: "/features", key: "sections" },
 ] as const
 
 // The frame every console page shares: product name, section nav, the
@@ -28,6 +29,7 @@ export function ConsoleShell({
 }) {
   const pathname = usePathname()
   const router = useRouter()
+  const { t } = useI18n()
 
   const signOut = async () => {
     await createClient().auth.signOut()
@@ -46,19 +48,20 @@ export function ConsoleShell({
         <div className={cn("mx-auto flex flex-wrap items-center gap-x-6 gap-y-2 px-4 pt-3 sm:px-6 md:pb-0", container)}>
           <Link href="/" className="flex items-center gap-2 rounded-md py-1 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
             <ShieldCheck className="h-5 w-5 text-primary" aria-hidden />
-            <span className="font-semibold">Operator console</span>
+            <span className="font-semibold">{t.shell.brand}</span>
           </Link>
 
           <div className="ml-auto flex items-center gap-3 md:order-last">
             {adminEmail && <span className="hidden text-sm text-muted-foreground lg:inline">{adminEmail}</span>}
+            <LanguageSwitch />
             <Button variant="outline" size="sm" onClick={() => void signOut()}>
               <LogOut className="h-4 w-4" aria-hidden />
-              Sign out
+              {t.shell.signOut}
             </Button>
           </div>
 
           {/* Full row under the brand on phones, inline from md. */}
-          <nav aria-label="Console sections" className="-mx-4 w-[calc(100%+2rem)] overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:w-auto md:px-0">
+          <nav aria-label={t.shell.nav.label} className="-mx-4 w-[calc(100%+2rem)] overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:w-auto md:px-0">
             <ul className="flex gap-1">
               {NAV.map((item) => {
                 const active = isActive(item.href)
@@ -74,7 +77,7 @@ export function ConsoleShell({
                           : "text-muted-foreground hover:text-foreground",
                       )}
                     >
-                      {item.label}
+                      {t.shell.nav[item.key]}
                     </Link>
                   </li>
                 )

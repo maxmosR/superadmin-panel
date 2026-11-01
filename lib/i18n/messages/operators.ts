@@ -1,0 +1,38 @@
+// Operators page.
+export const en = {
+  title: "Operators",
+  description: "BirraOra staff who can use this console. The last active operator can't be deactivated.",
+  count: (n: number) => (n === 1 ? "1 operator" : `${n} operators`),
+  loading: "Loading operators…",
+  loadFailed: "Couldn't load the operators.",
+  you: " (you)",
+  active: "Active",
+  inactive: "Inactive",
+  askAnother: "Ask another operator to deactivate you",
+  activate: "Activate",
+  deactivate: "Deactivate",
+  thisOperator: "this operator",
+  deactivateTitle: "Deactivate {who}?",
+  deactivateBody: "They lose access to the console on their next page load or action, until an operator activates them again.",
+  lastOperator: "The last active operator can't be deactivated.",
+  updateFailed: "The change couldn't be saved.",
+}
+
+export const it: typeof en = {
+  title: "Operatori",
+  description: "Lo staff BirraOra che può usare questa console. L'ultimo operatore attivo non può essere disattivato.",
+  count: (n: number) => (n === 1 ? "1 operatore" : `${n} operatori`),
+  loading: "Caricamento operatori…",
+  loadFailed: "Impossibile caricare gli operatori.",
+  you: " (tu)",
+  active: "Attivo",
+  inactive: "Non attivo",
+  askAnother: "Chiedi a un altro operatore di disattivarti",
+  activate: "Attiva",
+  deactivate: "Disattiva",
+  thisOperator: "questo operatore",
+  deactivateTitle: "Disattivare {who}?",
+  deactivateBody: "Perde l'accesso alla console al prossimo caricamento di pagina o alla prossima azione, finché un operatore non lo riattiva.",
+  lastOperator: "L'ultimo operatore attivo non può essere disattivato.",
+  updateFailed: "Impossibile salvare la modifica.",
+}

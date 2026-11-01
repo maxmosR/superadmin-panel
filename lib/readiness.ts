@@ -15,13 +15,13 @@ export type SetupAction =
   | { kind: "owner" }
 
 export interface SetupStep {
+  /** Also the key of the step's name in the strings (setup.steps). */
   key: "owner" | "domain" | "sms" | "order_email" | "payout" | "zones" | "hours"
-  label: string
   done: boolean
   /** False when the restaurant can still take some orders without it. */
   blocking: boolean
-  /** Shown under the step when it is not done. */
-  hint?: string
+  /** Shown under the step when it is not done (key into setup.hints). */
+  hint?: "sms" | "payoutWaiting" | "payoutCard" | "hours"
   action: SetupAction
 }
 
@@ -58,56 +58,49 @@ export function getReadiness(b: ReadinessInput): Readiness {
   const steps: SetupStep[] = [
     {
       key: "owner",
-      label: "Owner",
       done: !!b.readiness?.has_owner,
       blocking: true,
       action: { kind: "edit", section: "staff" },
     },
     {
       key: "domain",
-      label: "Active domain",
       done: !!b.domains?.some((d) => d.is_active),
       blocking: true,
       action: { kind: "edit", section: "domains" },
     },
     {
       key: "sms",
-      label: "SMS sender",
       done: !!b.readiness?.sms_sender_set,
       blocking: true,
-      hint: "Register the name at OpenAPI.com first.",
+      hint: "sms",
       action: { kind: "edit", section: "branding" },
     },
     {
       key: "order_email",
-      label: "Order email",
       done: !!b.order_notification_email,
       blocking: true,
       action: { kind: "edit", section: "orders" },
     },
     {
       key: "payout",
-      label: "Payout account",
       // Not needed when the restaurant doesn't take cards.
       done: !card || payoutReady,
       // With cash on delivery the restaurant can still take orders.
       blocking: card && !cash,
-      hint: b.payout_account ? "Waiting for Stripe to enable charges and payouts." : "Needed for card payments.",
+      hint: b.payout_account ? "payoutWaiting" : "payoutCard",
       action: { kind: "payout" },
     },
     {
       key: "zones",
-      label: "Delivery zones",
       done: !!b.zones?.published_version,
       blocking: true,
       action: { kind: "zones" },
     },
     {
       key: "hours",
-      label: "Opening hours",
       done: hasHours,
       blocking: true,
-      hint: "The owner sets them in the restaurant's admin panel.",
+      hint: "hours",
       action: { kind: "owner" },
     },
   ]

@@ -11,6 +11,8 @@ import { formatLatLng, parseLatLngText } from "@/lib/zones/geo"
 import { formatDistance, formatEuro } from "@/lib/zones/units"
 import type { LatLng, QuoteResult } from "@/lib/zones/types"
 import { PlacesSearch } from "./places-search"
+import { useI18n } from "@/lib/i18n/client"
+import { quoteText } from "./zone-text"
 
 export interface ZoneTest {
   point: LatLng
@@ -25,7 +27,7 @@ export interface ZoneTest {
 
 const MAX_RECENT = 10
 
-/** A short, comparable summary of a quote. */
+/** A short, comparable summary of a quote (also used to spot changes, so it stays in one language). */
 export function quoteSummary(q: QuoteResult | null): string {
   if (!q) return "—"
   switch (q.status) {
@@ -99,7 +101,7 @@ export function useZoneTests(businessId: string, slug: string) {
         const others = recentRef.current.filter((x) => formatLatLng(x.point) !== formatLatLng(point))
         store([t, ...others].slice(0, MAX_RECENT))
       } catch {
-        setError("Could not test this point. Try again.")
+        setError("test_failed")
       } finally {
         setBusy(false)
       }
@@ -137,14 +139,20 @@ export function useZoneTests(businessId: string, slug: string) {
 export type ZoneTests = ReturnType<typeof useZoneTests>
 
 function QuoteBlock({ title, q }: { title: string; q: QuoteResult | null }) {
+  const { t, fmt } = useI18n()
   return (
     <div className="flex-1 rounded-md border p-2">
       <div className="text-xs text-muted-foreground">{title}</div>
-      <div className="text-lg font-semibold">{quoteSummary(q)}</div>
+      <div className="text-lg font-semibold">{quoteText(t, q)}</div>
       {q && q.status !== "no_zones" && (
         <div className="space-y-0.5 text-xs text-muted-foreground">
-          {q.ring_index !== null && <div>Ring {q.ring_index}{q.label ? ` · ${q.label}` : ""}</div>}
-          <div>{formatDistance(q.distance_m)} from the center</div>
+          {q.ring_index !== null && (
+            <div>
+              {fmt(t.zones.ringLine, { n: q.ring_index })}
+              {q.label ? ` · ${q.label}` : ""}
+            </div>
+          )}
+          <div>{fmt(t.zones.fromCenter, { d: formatDistance(q.distance_m) })}</div>
         </div>
       )}
     </div>
@@ -152,59 +160,60 @@ function QuoteBlock({ title, q }: { title: string; q: QuoteResult | null }) {
 }
 
 export function TestStep({ tests, bias }: { tests: ZoneTests; bias: { center: LatLng; radiusM: number } | null }) {
+  const { t, fmt } = useI18n()
   const [text, setText] = useState("")
   const typed = parseLatLngText(text)
   const c = tests.current
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Search an address, click the map, or paste coordinates.</p>
-      <PlacesSearch bias={bias} placeholder="Test an address" onPick={(p) => void tests.run(p.point, p.formatted, p.streetOnly)} />
+      <p className="text-sm text-muted-foreground">{t.zones.testIntro}</p>
+      <PlacesSearch bias={bias} placeholder={t.zones.testAddress} onPick={(p) => void tests.run(p.point, p.formatted, p.streetOnly)} />
       <div className="flex gap-2">
-        <Input placeholder="lat, lng" value={text} onChange={(e) => setText(e.target.value)} />
+        <Input placeholder={t.zones.latLng} aria-label={t.zones.pasteLatLngLabel} value={text} onChange={(e) => setText(e.target.value)} />
         <Button variant="outline" disabled={!typed || tests.busy} onClick={() => typed && void tests.run(typed, null)}>
-          Test
+          {t.zones.test}
         </Button>
       </div>
-      {tests.error && <p className="text-sm text-destructive">{tests.error}</p>}
+      {tests.error && <p className="text-sm text-destructive" role="alert">{t.zones.testFailed}</p>}
       {c && (
         <div className="space-y-2">
           <div className="text-sm">
             <div className="font-medium">{c.label ?? formatLatLng(c.point)}</div>
             {c.streetOnly && (
-              <p className="text-xs text-amber-700">street only: the point is the street&apos;s middle, fees may differ along it</p>
+              <p className="text-xs text-amber-700">{t.zones.streetOnly}</p>
             )}
           </div>
           <div className="flex gap-2">
-            <QuoteBlock title="Draft" q={c.draft} />
-            <QuoteBlock title="Live" q={c.published} />
+            <QuoteBlock title={t.zones.draft} q={c.draft} />
+            <QuoteBlock title={t.zones.live} q={c.published} />
           </div>
         </div>
       )}
       <Separator />
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-medium">Recent tests</span>
+          <span className="text-sm font-medium">{t.zones.recent}</span>
           {tests.recent.some((t) => t.changed) && (
             <Button size="sm" variant="ghost" onClick={tests.clearChanged}>
-              Clear marks
+              {t.zones.clearMarks}
             </Button>
           )}
         </div>
-        {tests.recent.length === 0 && <p className="text-sm text-muted-foreground">None yet.</p>}
+        {tests.recent.length === 0 && <p className="text-sm text-muted-foreground">{t.zones.noneYet}</p>}
         <ul className="space-y-1">
-          {tests.recent.map((t) => (
-            <li key={formatLatLng(t.point)}>
+          {tests.recent.map((x) => (
+            <li key={formatLatLng(x.point)}>
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm hover:bg-accent"
-                onClick={() => tests.select(t)}
+                onClick={() => tests.select(x)}
               >
                 <span className="truncate">
-                  {t.changed && <span className="mr-1 rounded bg-amber-100 px-1 text-[10px] text-amber-800">changed</span>}
-                  {t.label ?? formatLatLng(t.point)}
+                  {x.changed && <span className="mr-1 rounded bg-amber-100 px-1 text-xs text-amber-800">{t.zones.changed}</span>}
+                  {x.label ?? formatLatLng(x.point)}
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">
-                  Draft: {quoteSummary(t.draft)} · Live: {quoteSummary(t.published)}
+                  {fmt(t.zones.recentLine, { d: quoteText(t, x.draft), l: quoteText(t, x.published) })}
                 </span>
               </button>
             </li>

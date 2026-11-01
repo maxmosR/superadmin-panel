@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,7 +18,9 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Pencil, Plus } from "lucide-react"
-import { CALC_MODES, CALC_MODE_LABELS, RATE_FIELDS, RATE_LABELS, type CalcMode, type Provider } from "@/lib/providers"
+import { CALC_MODES, RATE_FIELDS, type CalcMode, type Provider } from "@/lib/providers"
+import { useI18n } from "@/lib/i18n/client"
+import { apiError } from "@/lib/i18n/api-error"
 
 type Form = Record<string, string> & { calc_mode: CalcMode }
 type Flags = { is_active: boolean; is_mandatory: boolean }
@@ -53,6 +55,11 @@ const toForm = (p: Provider): Form => ({
 
 /** Platform master list of providers: create, edit, disable, mark mandatory. */
 export function ProvidersManager() {
+  const { t, fmt } = useI18n()
+  const tRef = useRef(t)
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
   const [providers, setProviders] = useState<Provider[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -71,10 +78,10 @@ export function ProvidersManager() {
     try {
       const res = await fetch("/api/providers")
       const j = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(j.error || `Failed to load (${res.status})`)
+      if (!res.ok) throw new Error(apiError(tRef.current, j.error, res.status))
       setProviders(j.providers ?? [])
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load providers")
+      setError(e instanceof Error && !(e instanceof TypeError) ? e.message : tRef.current.providers.loadFailed)
     } finally {
       setLoading(false)
     }
@@ -116,11 +123,11 @@ export function ProvidersManager() {
         body: JSON.stringify(body),
       })
       const j = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`)
+      if (!res.ok) throw new Error(apiError(t, j.error, res.status))
       setOpen(false)
       await load()
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : "Failed to save provider")
+      setFormError(e instanceof Error && !(e instanceof TypeError) ? e.message : t.providers.saveFailed)
     } finally {
       setSaving(false)
     }
@@ -128,26 +135,24 @@ export function ProvidersManager() {
 
   const fmtRates = (p: Provider) => {
     const parts: string[] = []
-    if (Number(p.default_fee_rate)) parts.push(`${p.default_fee_rate}% fee`)
-    if (Number(p.default_iva_rate) && Number(p.default_fee_rate)) parts.push(`${p.default_iva_rate}% IVA`)
+    if (Number(p.default_fee_rate)) parts.push(fmt(t.providers.feeShort, { n: p.default_fee_rate }))
+    if (Number(p.default_iva_rate) && Number(p.default_fee_rate)) parts.push(fmt(t.providers.ivaShort, { n: p.default_iva_rate }))
     if (Number(p.default_stripe_fee_rate) || Number(p.default_stripe_fixed_fee))
       parts.push(`${p.default_stripe_fee_rate}% + €${Number(p.default_stripe_fixed_fee).toFixed(2)}`)
-    parts.push(`${p.default_tax_rate}% tax`)
+    parts.push(fmt(t.providers.taxShort, { n: p.default_tax_rate }))
     return parts.join(" · ")
   }
 
   return (
     <>
-      <div className="mb-4 mt-10 flex items-center justify-between">
+      <div className="mb-4 mt-10 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold">Providers</h2>
-          <p className="text-sm text-muted-foreground">
-            Sales channels and payment providers businesses can use, with their default rates.
-          </p>
+          <h2 className="text-xl font-bold">{t.providers.title}</h2>
+          <p className="text-sm text-muted-foreground">{t.providers.description}</p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add provider
+        <Button variant="outline" onClick={openCreate}>
+          <Plus className="mr-2 h-4 w-4" aria-hidden />
+          {t.providers.add}
         </Button>
       </div>
 
@@ -160,26 +165,26 @@ export function ProvidersManager() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            {loading ? "Loading…" : `${providers.length} provider${providers.length === 1 ? "" : "s"}`}
+            {loading ? t.common.loading : t.providers.count(providers.length)}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {loading && providers.length === 0 ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Loading providers…
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden />
+              {t.providers.loading}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Provider</TableHead>
-                    <TableHead>Mode</TableHead>
-                    <TableHead>Default rates</TableHead>
-                    <TableHead>Customer service</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t.providers.colProvider}</TableHead>
+                    <TableHead>{t.providers.colMode}</TableHead>
+                    <TableHead>{t.providers.colRates}</TableHead>
+                    <TableHead>{t.providers.colService}</TableHead>
+                    <TableHead>{t.providers.colStatus}</TableHead>
+                    <TableHead className="text-right">{t.providers.colActions}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -189,21 +194,22 @@ export function ProvidersManager() {
                         <div className="font-medium">{p.name}</div>
                         <div className="text-xs text-muted-foreground">{p.code}</div>
                       </TableCell>
-                      <TableCell className="text-sm capitalize">{p.calc_mode}</TableCell>
+                      <TableCell className="text-sm">{t.providers.modes[p.calc_mode] ?? p.calc_mode}</TableCell>
                       <TableCell className="text-sm">{fmtRates(p)}</TableCell>
                       <TableCell className="text-sm">{p.default_customer_service_number ?? "—"}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {p.is_mandatory && <Badge>mandatory</Badge>}
+                          {p.is_mandatory && <Badge variant="secondary">{t.providers.mandatory}</Badge>}
                           <Badge variant={p.is_active ? "secondary" : "outline"}>
-                            {p.is_active ? "active" : "disabled"}
+                            {p.is_active ? t.providers.active : t.providers.disabled}
                           </Badge>
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
-                          <Pencil className="mr-1 h-4 w-4" />
-                          Edit
+                          <Pencil className="mr-1 h-4 w-4" aria-hidden />
+                          {t.common.edit}
+                          <span className="sr-only"> {p.name}</span>
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -218,10 +224,8 @@ export function ProvidersManager() {
       <Dialog open={open} onOpenChange={(o) => !saving && setOpen(o)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editing ? `Edit ${editing.name}` : "Add provider"}</DialogTitle>
-            <DialogDescription>
-              Defaults apply to every business that hasn&apos;t set its own value.
-            </DialogDescription>
+            <DialogTitle>{editing ? fmt(t.providers.editTitle, { name: editing.name }) : t.providers.add}</DialogTitle>
+            <DialogDescription>{t.providers.dialogDescription}</DialogDescription>
           </DialogHeader>
 
           {formError && (
@@ -232,10 +236,10 @@ export function ProvidersManager() {
 
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Name *">
+              <Field label={t.providers.name}>
                 <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Just Eat" />
               </Field>
-              <Field label={editing ? "Code (fixed)" : "Code *"}>
+              <Field label={editing ? t.providers.codeFixed : t.providers.code}>
                 <Input
                   value={form.code}
                   disabled={!!editing}
@@ -243,7 +247,7 @@ export function ProvidersManager() {
                   placeholder="justeat"
                 />
               </Field>
-              <Field label="Invoice mode">
+              <Field label={t.providers.invoiceMode}>
                 <Select value={form.calc_mode} onValueChange={(v) => setForm((f) => ({ ...f, calc_mode: v as CalcMode }))}>
                   <SelectTrigger>
                     <SelectValue />
@@ -251,17 +255,17 @@ export function ProvidersManager() {
                   <SelectContent>
                     {CALC_MODES.map((m) => (
                       <SelectItem key={m} value={m}>
-                        {CALC_MODE_LABELS[m]}
+                        {t.providers.modeLong[m]}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Sort order">
+              <Field label={t.providers.sortOrder}>
                 <Input type="number" value={form.sort_order} onChange={(e) => set("sort_order", e.target.value)} />
               </Field>
               <div className="sm:col-span-2">
-                <Field label="Icon URL (optional)">
+                <Field label={t.providers.iconUrl}>
                   <Input
                     value={form.icon_url}
                     onChange={(e) => set("icon_url", e.target.value)}
@@ -272,10 +276,10 @@ export function ProvidersManager() {
             </div>
 
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Default rates</h3>
+              <h3 className="mb-2 text-sm font-semibold">{t.providers.defaultRates}</h3>
               <div className="grid gap-3 sm:grid-cols-3">
                 {RATE_FIELDS.map((f) => (
-                  <Field key={f} label={RATE_LABELS[f]}>
+                  <Field key={f} label={t.providers.rates[f]}>
                     <Input
                       type="number"
                       step="0.01"
@@ -285,7 +289,7 @@ export function ProvidersManager() {
                     />
                   </Field>
                 ))}
-                <Field label="Customer service number">
+                <Field label={t.providers.serviceNumber}>
                   <Input
                     type="tel"
                     value={form.default_customer_service_number}
@@ -305,7 +309,7 @@ export function ProvidersManager() {
                     setFlags((f) => ({ is_mandatory: e.target.checked, is_active: e.target.checked || f.is_active }))
                   }
                 />
-                Mandatory — always enabled for every business; they cannot switch it off
+                {t.providers.mandatoryCheck}
               </label>
               <label className="flex items-center gap-2">
                 <input
@@ -314,18 +318,18 @@ export function ProvidersManager() {
                   disabled={flags.is_mandatory}
                   onChange={(e) => setFlags((f) => ({ ...f, is_active: e.target.checked }))}
                 />
-                Active — offered to businesses (untick to disable; existing invoices keep it)
+                {t.providers.activeCheck}
               </label>
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
-              Cancel
+              {t.common.cancel}
             </Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {editing ? "Save changes" : "Create provider"}
+              {editing ? t.edit.saveChanges : t.providers.create}
             </Button>
           </DialogFooter>
         </DialogContent>

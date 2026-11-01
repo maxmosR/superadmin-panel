@@ -16,6 +16,8 @@ import {
 import { CheckCircle2, Circle, Loader2 } from "lucide-react"
 import { getReadiness } from "@/lib/readiness"
 import { Field } from "./field"
+import { useI18n } from "@/lib/i18n/client"
+import { apiError } from "@/lib/i18n/api-error"
 
 interface Props {
   open: boolean
@@ -64,6 +66,7 @@ function toAbbreviation(name: string) {
 const SLUG_RE = /^[a-z0-9-]{3,40}$/
 
 export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated, onContinue }: Props) {
+  const { t, fmt } = useI18n()
   const [form, setForm] = useState<Form>({ ...EMPTY })
   // Fields the operator typed in themselves stop following the name.
   const [touched, setTouched] = useState<Partial<Record<keyof Form, boolean>>>({})
@@ -88,11 +91,11 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
 
   const dirty = Object.values(form).some((v) => v.trim() !== "")
   const problems: Partial<Record<keyof Form, string>> = {
-    business_name: form.business_name.trim() ? undefined : "Enter the restaurant's name.",
-    name_abbreviation: form.name_abbreviation.trim() ? undefined : "Enter a short abbreviation.",
-    subdomain: /^[a-z0-9-]+$/.test(form.subdomain) ? undefined : "Use lowercase letters, digits and hyphens.",
-    slug: SLUG_RE.test(form.slug) ? undefined : "3–40 characters: lowercase letters, digits and hyphens.",
-    owner_identifier: form.owner_identifier.trim() ? undefined : "Enter the owner's phone or email.",
+    business_name: form.business_name.trim() ? undefined : t.create.errors.name,
+    name_abbreviation: form.name_abbreviation.trim() ? undefined : t.create.errors.abbreviation,
+    subdomain: /^[a-z0-9-]+$/.test(form.subdomain) ? undefined : t.create.errors.subdomain,
+    slug: SLUG_RE.test(form.slug) ? undefined : t.create.errors.slug,
+    owner_identifier: form.owner_identifier.trim() ? undefined : t.create.errors.owner,
   }
   const errorFor = (k: keyof Form) => (showErrors ? problems[k] : undefined)
 
@@ -142,12 +145,12 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
         }),
       })
       const j = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`)
+      if (!res.ok) throw new Error(apiError(t, j.error, res.status))
 
       setSuccess({ businessId: j.business_id, subdomain: j.subdomain, owner: form.owner_identifier.trim(), ownerKind })
       onCreated()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create the restaurant")
+      setError(fmt(t.create.errors.failed, { error: err instanceof Error && !(err instanceof TypeError) ? err.message : t.common.network }))
     } finally {
       setSubmitting(false)
     }
@@ -170,12 +173,12 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-green-700" aria-hidden />
-                Restaurant created
+                {t.create.created}
               </DialogTitle>
-              <DialogDescription>The owner can sign in now with a code sent to their {success.ownerKind}. There is no password.</DialogDescription>
+              <DialogDescription>{success.ownerKind === "email" ? t.create.createdBodyEmail : t.create.createdBodyPhone}</DialogDescription>
             </DialogHeader>
             <dl className="grid gap-3 rounded-md border p-4 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-6">
-              <dt className="text-muted-foreground">Admin panel</dt>
+              <dt className="text-muted-foreground">{t.create.adminPanel}</dt>
               <dd>
                 <a
                   href={`http://${success.subdomain}.${rootDomain}/login`}
@@ -186,11 +189,11 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
                   {success.subdomain}.{rootDomain}/login
                 </a>
               </dd>
-              <dt className="text-muted-foreground">Owner {success.ownerKind === "email" ? "email" : "phone"}</dt>
+              <dt className="text-muted-foreground">{success.ownerKind === "email" ? t.create.ownerEmail : t.create.ownerPhone}</dt>
               <dd className="font-medium break-all">{success.owner}</dd>
             </dl>
             <div>
-              <h3 className="text-sm font-semibold">Still to do before it can take orders</h3>
+              <h3 className="text-sm font-semibold">{t.create.stillToDo}</h3>
               <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
                 {nextSteps.map((s) => (
                   <li key={s.key} className="flex items-center gap-2">
@@ -200,8 +203,8 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
                       <Circle className="h-4 w-4 text-muted-foreground" aria-hidden />
                     )}
                     <span className={s.done ? "text-muted-foreground" : undefined}>
-                      {s.label}
-                      <span className="sr-only">{s.done ? ": done" : ": to do"}</span>
+                      {t.setup.steps[s.key]}
+                      <span className="sr-only">: {s.done ? t.common.done : t.common.toDo}</span>
                     </span>
                   </li>
                 ))}
@@ -209,7 +212,7 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={close}>
-                Later
+                {t.common.later}
               </Button>
               <Button
                 onClick={() => {
@@ -217,17 +220,15 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
                   close()
                 }}
               >
-                Continue setup
+                {t.common.continueSetup}
               </Button>
             </DialogFooter>
           </>
         ) : (
           <form ref={formRef} onSubmit={handleSubmit} noValidate className="grid gap-4">
             <DialogHeader>
-              <DialogTitle>New restaurant</DialogTitle>
-              <DialogDescription>
-                Name, web address and first owner. You&apos;ll set branding, order settings and payouts next.
-              </DialogDescription>
+              <DialogTitle>{t.create.title}</DialogTitle>
+              <DialogDescription>{t.create.description}</DialogDescription>
             </DialogHeader>
 
             {error && (
@@ -237,17 +238,17 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
             )}
 
             <div className="grid gap-4 sm:grid-cols-[1fr_7rem]">
-              <Field label="Restaurant name" error={errorFor("business_name")}>
+              <Field label={t.create.name} error={errorFor("business_name")}>
                 {(p) => <Input {...p} value={form.business_name} onChange={(e) => setName(e.target.value)} autoFocus />}
               </Field>
-              <Field label="Abbreviation" error={errorFor("name_abbreviation")}>
+              <Field label={t.create.abbreviation} error={errorFor("name_abbreviation")}>
                 {(p) => <Input {...p} value={form.name_abbreviation} onChange={(e) => set("name_abbreviation", e.target.value)} maxLength={8} />}
               </Field>
             </div>
 
             <Field
-              label="Web address"
-              hint="The restaurant's ordering site and admin panel. You can add its own domain later."
+              label={t.create.webAddress}
+              hint={t.create.webAddressHint}
               error={errorFor("subdomain")}
             >
               {(p) => (
@@ -265,7 +266,7 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
               )}
             </Field>
 
-            <Field label="Slug" hint="Storage folders use it. It can never change." error={errorFor("slug")}>
+            <Field label={t.create.slug} hint={t.create.slugHint} error={errorFor("slug")}>
               {(p) => (
                 <Input
                   {...p}
@@ -280,8 +281,8 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
             </Field>
 
             <Field
-              label="Owner phone or email"
-              hint="A phone number (+39 is added if missing) or an email. An existing account is reused; otherwise one is created."
+              label={t.create.owner}
+              hint={t.create.ownerHint}
               error={errorFor("owner_identifier")}
             >
               {(p) => (
@@ -296,11 +297,11 @@ export function CreateBusinessDialog({ open, onOpenChange, rootDomain, onCreated
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={close} disabled={submitting}>
-                Cancel
+                {t.common.cancel}
               </Button>
               <Button type="submit" disabled={submitting}>
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-                {submitting ? "Creating…" : "Create restaurant"}
+                {submitting ? t.create.creating : t.create.create}
               </Button>
             </DialogFooter>
           </form>

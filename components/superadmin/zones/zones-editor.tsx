@@ -35,20 +35,16 @@ import type {
 } from "@/lib/zones/types"
 import { ZONE_LIMITS } from "@/lib/zones/types"
 import { ZoneMap, type EditorStep, type MapLayers } from "./zone-map"
+import { MapBoundary } from "./map-boundary"
+import { useConfirm } from "../confirm-dialog"
+import { useI18n } from "@/lib/i18n/client"
+import { libText } from "./zone-text"
 import { CenterStep, CutStep, PiecesStep, RingsStep, PiecePopover, type PiecePopoverState } from "./zone-steps"
 import { TestStep, useZoneTests } from "./test-step"
 import { PublishStep } from "./publish-step"
 import { HistoryStep } from "./history-step"
 
-const STEPS: Array<{ id: EditorStep; label: string }> = [
-  { id: "center", label: "1. Center" },
-  { id: "rings", label: "2. Rings" },
-  { id: "cut", label: "3. Cut" },
-  { id: "pieces", label: "4. Pieces" },
-  { id: "test", label: "5. Test" },
-  { id: "publish", label: "6. Publish" },
-  { id: "history", label: "7. History" },
-]
+const STEPS: EditorStep[] = ["center", "rings", "cut", "pieces", "test", "publish", "history"]
 
 interface Computed {
   revision: number
@@ -78,6 +74,13 @@ function useNarrow(): boolean {
 }
 
 export function ZonesEditor({ businessId }: { businessId: string }) {
+  const { t, fmt } = useI18n()
+  const { confirm, dialog } = useConfirm()
+  // Latest strings for callbacks created once (loader, autosave, Places).
+  const tRef = useRef(t)
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
   const [overview, setOverview] = useState<ZonesOverview | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [state, setState] = useState<EditorState>(EMPTY_STATE)
@@ -121,17 +124,20 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
     try {
       const res = await fetch(`/api/zones?business_id=${encodeURIComponent(businessId)}`, { cache: "no-store" })
       const j = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(j.error === "business_not_found" ? "Restaurant not found." : `Could not load zones (${j.error ?? res.status}).`)
+      if (!res.ok)
+        throw new Error(
+          j.error === "business_not_found" ? tRef.current.zones.notFound : fmt(tRef.current.zones.loadFailed, { reason: j.error ?? res.status }),
+        )
       const o = j as ZonesOverview
       setOverview(o)
       const bizOrigin = o.business.latitude !== null && o.business.longitude !== null ? { lat: o.business.latitude, lng: o.business.longitude } : null
       applyDraft(o.draft, o.published?.origin ?? bizOrigin)
       return o
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Could not load zones.")
+      setLoadError(e instanceof Error && !(e instanceof TypeError) ? e.message : tRef.current.common.network)
       return null
     }
-  }, [businessId, applyDraft])
+  }, [businessId, applyDraft, fmt])
 
   useEffect(() => {
     void load()
@@ -150,7 +156,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
         const loc = places[0]?.location
         if (!cancelled && loc) {
           setState((s) => (s.origin ? s : { ...s, origin: { lat: loc.lat(), lng: loc.lng() } }))
-          setNotice("Center point placed at the restaurant's address. Check it, then drag the pin if needed.")
+          setNotice(tRef.current.zones.centerFromAddress)
         }
       } catch {
         // The operator searches or clicks instead.
@@ -230,10 +236,14 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
 
   // ---- map callbacks ----------------------------------------------------------------
   const moveOrigin = useCallback(
-    (p: LatLng) => {
+    async (p: LatLng) => {
       const cur = state.origin
       if (cur && distanceM(cur, p) > ZONE_LIMITS.originMovedM) {
-        const ok = window.confirm(`Move the center point by ${Math.round(distanceM(cur, p))} m?`)
+        const ok = await confirm({
+          title: fmt(t.zones.moveCenterTitle, { m: Math.round(distanceM(cur, p)) }),
+          description: t.zones.moveCenterBody,
+          confirmLabel: t.zones.moveCenterConfirm,
+        })
         if (!ok) {
           setResyncNonce((n) => n + 1)
           return
@@ -241,7 +251,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
       }
       edit((s) => ({ ...s, origin: p }))
     },
-    [state.origin, edit],
+    [state.origin, edit, confirm, fmt, t],
   )
 
   const onLinesChange = useCallback(
@@ -271,21 +281,27 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
 
   // ---- draft actions --------------------------------------------------------------
   const discard = async () => {
-    if (!window.confirm(hasPublished ? "Discard all unpublished changes and go back to the live version?" : "Delete this draft? Nothing is published yet.")) return
+    const ok = await confirm({
+      title: hasPublished ? t.zones.discardLiveTitle : t.zones.discardNewTitle,
+      description: hasPublished ? t.zones.discardLiveBody : t.zones.discardNewBody,
+      confirmLabel: t.zones.discardConfirm,
+      destructive: true,
+    })
+    if (!ok) return
     const res = await fetch("/api/zones/draft/discard", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ business_id: businessId, expected_revision: revisionRef.current }),
     })
     if (res.status === 409) return setSaveStatus("conflict")
-    if (!res.ok) return setNotice("Could not discard the draft. Try again.")
+    if (!res.ok) return setNotice(t.zones.discardFailed)
     await load()
-    setNotice("Draft discarded.")
+    setNotice(t.zones.discarded)
   }
 
   const doExport = () => {
     const built = buildPayload(state)
-    if (!built.ok) return setNotice(built.reason)
+    if (!built.ok) return setNotice(libText(t, built.reason))
     const blob = new Blob([exportJson(built.payload, { slug: overview?.business.slug ?? "", exported_at: new Date().toISOString() })], {
       type: "application/json",
     })
@@ -299,12 +315,13 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
 
   const doImport = async (file: File) => {
     const parsed = parseImportJson(await file.text())
-    if (!parsed.ok) return setNotice(`Import failed: ${parsed.error}`)
-    if (!window.confirm("Replace the draft with the imported file?")) return
+    if (!parsed.ok) return setNotice(fmt(t.zones.importFailed, { reason: libText(t, parsed.error) }))
+    const ok = await confirm({ title: t.zones.importTitle, description: t.zones.importBody, confirmLabel: t.zones.importConfirm, destructive: true })
+    if (!ok) return
     edit(() => stateFromPayload(parsed.payload))
     setResyncNonce((n) => n + 1)
     autosaveRef.current?.flush()
-    setNotice("Imported. The draft is being saved and checked.")
+    setNotice(t.zones.imported)
   }
 
   // ---- render -------------------------------------------------------------------------
@@ -315,7 +332,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
           <AlertDescription>{loadError}</AlertDescription>
         </Alert>
         <Button className="mt-4" variant="outline" onClick={() => void load()}>
-          Retry
+          {t.zones.retry}
         </Button>
       </div>
     )
@@ -323,7 +340,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
   if (!overview) {
     return (
       <div className="flex h-screen items-center justify-center text-muted-foreground">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading delivery zones…
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden /> {t.zones.loading}
       </div>
     )
   }
@@ -339,23 +356,24 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" asChild>
               <Link href="/">
-                <ArrowLeft className="mr-1 h-4 w-4" /> Restaurants
+                <ArrowLeft className="mr-1 h-4 w-4" aria-hidden /> {t.zones.back}
               </Link>
             </Button>
             <div>
-              <div className="font-semibold">Delivery zones · {overview.business.business_name}</div>
+              <h1 className="font-semibold">{fmt(t.zones.title, { name: overview.business.business_name })}</h1>
               <div className="text-xs text-muted-foreground">
-                {hasPublished ? `Live: version ${published?.version}` : "Nothing published"} · Draft: version {draftVersion}
+                {hasPublished ? fmt(t.zones.liveVersion, { v: published?.version ?? "" }) : t.zones.nothingPublished} ·{" "}
+                {fmt(t.zones.draftVersion, { v: draftVersion })}
               </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <SaveIndicator status={saveStatus} blocked={saveBlocked} onRetry={() => autosaveRef.current?.retry()} />
+            <SaveIndicator status={saveStatus} blocked={saveBlocked ? libText(t, saveBlocked) : null} onRetry={() => autosaveRef.current?.retry()} />
             <Button variant="outline" size="sm" onClick={doExport} disabled={readOnly && !narrow}>
-              <Download className="mr-1 h-4 w-4" /> Export JSON
+              <Download className="mr-1 h-4 w-4" aria-hidden /> {t.zones.exportJson}
             </Button>
             <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={readOnly}>
-              <Upload className="mr-1 h-4 w-4" /> Import JSON
+              <Upload className="mr-1 h-4 w-4" aria-hidden /> {t.zones.importJson}
             </Button>
             <input
               ref={fileRef}
@@ -369,7 +387,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
               }}
             />
             <Button variant="outline" size="sm" onClick={() => void discard()} disabled={readOnly || !overview.draft}>
-              <RotateCcw className="mr-1 h-4 w-4" /> Discard draft
+              <RotateCcw className="mr-1 h-4 w-4" aria-hidden /> {t.zones.discardDraft}
             </Button>
           </div>
         </div>
@@ -377,15 +395,15 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
 
       {!hasPublished && (
         <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
-          <AlertDescription>No delivery zones published. This restaurant can&apos;t take delivery orders.</AlertDescription>
+          <AlertDescription>{t.zones.noZonesLive}</AlertDescription>
         </Alert>
       )}
       {saveStatus === "conflict" && (
         <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
           <AlertDescription className="flex items-center justify-between gap-3">
-            This draft was changed in another window. Reload to see the latest version.
+            {t.zones.conflict}
             <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
-              Reload
+              {t.zones.reload}
             </Button>
           </AlertDescription>
         </Alert>
@@ -395,7 +413,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
           <AlertDescription className="flex items-center justify-between gap-3">
             {notice}
             <Button size="sm" variant="ghost" onClick={() => setNotice(null)}>
-              Dismiss
+              {t.common.dismiss}
             </Button>
           </AlertDescription>
         </Alert>
@@ -403,9 +421,9 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
       {viewing && (
         <Alert className="rounded-none border-x-0 border-t-0">
           <AlertDescription className="flex items-center justify-between gap-3">
-            Viewing version {viewing.version} (read-only).
+            {fmt(t.zones.viewing, { v: viewing.version })}
             <Button size="sm" variant="outline" onClick={() => setViewing(null)}>
-              Back to the draft
+              {t.zones.backToDraft}
             </Button>
           </AlertDescription>
         </Alert>
@@ -414,18 +432,20 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
       {narrow ? (
         <div className="flex flex-1 flex-col gap-3 p-4">
           <Alert>
-            <AlertDescription>Editing zones needs a larger screen.</AlertDescription>
+            <AlertDescription>{t.zones.narrow}</AlertDescription>
           </Alert>
           <div className="h-[70vh]">
-            <ZoneMap
-              {...mapCommon()}
-            />
+            <MapBoundary>
+              <ZoneMap {...mapCommon()} />
+            </MapBoundary>
           </div>
         </div>
       ) : (
         <div className="grid flex-1 grid-cols-[minmax(0,1fr)_420px]">
           <div className="relative p-3">
-            <ZoneMap {...mapCommon()} />
+            <MapBoundary>
+              <ZoneMap {...mapCommon()} />
+            </MapBoundary>
             {popover && step === "pieces" && !readOnly && (
               <PiecePopover
                 popover={popover}
@@ -437,22 +457,23 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
             )}
           </div>
           <aside className="flex max-h-[calc(100vh-64px)] flex-col border-l">
-            <nav className="flex flex-wrap gap-1 border-b p-2">
-              {STEPS.map((s) => (
+            <nav aria-label={t.zones.stepsLabel} className="flex flex-wrap gap-1 border-b p-2">
+              {STEPS.map((id) => (
                 <Button
-                  key={s.id}
+                  key={id}
                   size="sm"
-                  variant={step === s.id ? "default" : "ghost"}
+                  variant={step === id ? "secondary" : "ghost"}
+                  aria-current={step === id ? "step" : undefined}
                   onClick={() => {
-                    setStep(s.id)
+                    setStep(id)
                     setDrawing(false)
                     setPopover(null)
-                    if (s.id !== "publish") setLayers("draft")
+                    if (id !== "publish") setLayers("draft")
                   }}
                 >
-                  {s.label}
-                  {s.id === "publish" && blockers.length > 0 && (
-                    <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]">
+                  {t.zones.steps[id]}
+                  {id === "publish" && blockers.length > 0 && (
+                    <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">
                       {blockers.length}
                     </Badge>
                   )}
@@ -466,7 +487,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
                   liveOrigin={published?.origin ?? null}
                   outerM={outerM}
                   readOnly={readOnly}
-                  onPick={(p) => moveOrigin(p)}
+                  onPick={(p) => void moveOrigin(p)}
                 />
               )}
               {step === "rings" && <RingsStep rings={state.rings} readOnly={readOnly} edit={edit} onShow={showOnMap} />}
@@ -505,7 +526,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
                   published={published}
                   layers={layers}
                   saving={saveStatus === "pending" || saveStatus === "saving"}
-                  saveBlocked={saveBlocked}
+                  saveBlocked={saveBlocked ? libText(t, saveBlocked) : null}
                   readOnly={readOnly}
                   revision={() => revisionRef.current}
                   onLayers={setLayers}
@@ -515,7 +536,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
                   onPublished={async (v) => {
                     await load()
                     setLayers("draft")
-                    setNotice(`Version ${v} is live.`)
+                    setNotice(fmt(t.zones.published, { v }))
                   }}
                 />
               )}
@@ -531,7 +552,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
                     setViewing(null)
                     applyDraft(draft, null)
                     setOverview((o) => (o ? { ...o, draft } : o))
-                    setNotice(`Version ${v} copied into the draft. Review it, then publish it as a new version.`)
+                    setNotice(fmt(t.zones.restored, { v }))
                   }}
                   onConflict={() => setSaveStatus("conflict")}
                 />
@@ -540,6 +561,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
           </aside>
         </div>
       )}
+      {dialog}
     </div>
   )
 
@@ -561,7 +583,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
       testPoint: step === "test" ? (tests.current?.point ?? null) : null,
       focus,
       resyncNonce,
-      onOriginChange: moveOrigin,
+      onOriginChange: (p: LatLng) => void moveOrigin(p),
       onRingRadiusChange,
       onLinesChange,
       onDrawFinished: () => setDrawing(false),
@@ -575,28 +597,29 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
 }
 
 function SaveIndicator({ status, blocked, onRetry }: { status: AutosaveStatus; blocked: string | null; onRetry: () => void }) {
+  const { t } = useI18n()
   if (blocked) return <span className="text-xs text-amber-700">{blocked}</span>
   switch (status) {
     case "pending":
     case "saving":
       return (
         <span className="flex items-center text-xs text-muted-foreground">
-          <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Saving…
+          <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden /> {t.zones.save.saving}
         </span>
       )
     case "saved":
-      return <span className="text-xs text-muted-foreground">Saved</span>
+      return <span className="text-xs text-muted-foreground">{t.zones.save.saved}</span>
     case "error":
       return (
         <span className="flex items-center gap-1 text-xs text-destructive">
-          Error,
+          {t.zones.save.error}
           <button type="button" className="underline" onClick={onRetry}>
-            retry
+            {t.zones.save.retry}
           </button>
         </span>
       )
     case "conflict":
-      return <span className="text-xs text-destructive">Not saved: changed in another window</span>
+      return <span className="text-xs text-destructive">{t.zones.save.conflict}</span>
     default:
       return null
   }

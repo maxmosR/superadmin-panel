@@ -8,8 +8,8 @@ import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { ZoneSetView, ZoneVersionRow } from "@/lib/zones/types"
-
-const rome = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Rome" })
+import { useI18n } from "@/lib/i18n/client"
+import { useConfirm } from "../confirm-dialog"
 
 export function HistoryStep(props: {
   businessId: string
@@ -21,6 +21,9 @@ export function HistoryStep(props: {
   onRestored: (draft: ZoneSetView, version: number) => void
   onConflict: () => void
 }) {
+  const { t, fmt, locale } = useI18n()
+  const { confirm, dialog } = useConfirm()
+  const rome = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Rome" })
   const [busy, setBusy] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -32,14 +35,20 @@ export function HistoryStep(props: {
       if (!res.ok) throw new Error()
       props.onView(((await res.json()) as { zone_set: ZoneSetView }).zone_set)
     } catch {
-      setError("Could not load that version.")
+      setError(t.zones.viewFailed)
     } finally {
       setBusy(null)
     }
   }
 
   const restore = async (version: number) => {
-    if (!window.confirm(`Replace the draft with a copy of version ${version}?`)) return
+    const ok = await confirm({
+      title: fmt(t.zones.restoreTitle, { v: version }),
+      description: fmt(t.zones.restoreBody, { v: version }),
+      confirmLabel: t.zones.restoreConfirm,
+      destructive: true,
+    })
+    if (!ok) return
     setBusy(version)
     setError(null)
     try {
@@ -52,7 +61,7 @@ export function HistoryStep(props: {
       if (!res.ok) throw new Error()
       props.onRestored(((await res.json()) as { draft: ZoneSetView }).draft, version)
     } catch {
-      setError("Could not restore that version.")
+      setError(t.zones.restoreFailed)
     } finally {
       setBusy(null)
     }
@@ -60,34 +69,41 @@ export function HistoryStep(props: {
 
   return (
     <div className="space-y-3">
-      {props.versions.length === 0 && <p className="text-sm text-muted-foreground">Nothing published yet.</p>}
+      {props.versions.length === 0 && <p className="text-sm text-muted-foreground">{t.zones.nothingYet}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
       <ul className="space-y-2">
         {props.versions.map((v) => (
           <li key={v.version} className="rounded-md border p-2 text-sm">
             <div className="flex items-center justify-between">
-              <span className="font-medium">Version {v.version}</span>
-              {v.status === "published" ? <Badge>live</Badge> : <Badge variant="secondary">archived</Badge>}
+              <span className="font-medium">{fmt(t.zones.version, { v: v.version })}</span>
+              {v.status === "published" ? (
+                <Badge variant="outline" className="border-green-700/40 text-green-700">
+                  {t.zones.liveBadge}
+                </Badge>
+              ) : (
+                <Badge variant="secondary">{t.zones.archived}</Badge>
+              )}
             </div>
             <div className="text-xs text-muted-foreground">
-              {v.published_at ? rome.format(new Date(v.published_at)) : "—"} · {v.published_by_email ?? "unknown operator"}
+              {v.published_at ? rome.format(new Date(v.published_at)) : "—"} · {v.published_by_email ?? t.zones.unknownOperator}
             </div>
             <div className="mt-2 flex gap-2">
               <Button
                 size="sm"
-                variant={props.viewingVersion === v.version ? "default" : "outline"}
+                variant={props.viewingVersion === v.version ? "secondary" : "outline"}
                 disabled={busy !== null}
                 onClick={() => (props.viewingVersion === v.version ? props.onView(null) : void view(v.version))}
               >
-                {props.viewingVersion === v.version ? "Close view" : "View on map"}
+                {props.viewingVersion === v.version ? t.zones.closeView : t.zones.viewOnMap}
               </Button>
               <Button size="sm" variant="outline" disabled={busy !== null || props.readOnly} onClick={() => void restore(v.version)}>
-                Restore as draft
+                {t.zones.restore}
               </Button>
             </div>
           </li>
         ))}
       </ul>
+      {dialog}
     </div>
   )
 }

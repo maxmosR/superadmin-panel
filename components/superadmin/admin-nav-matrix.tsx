@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,6 +8,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { ConsoleShell, PageHead } from "./console-shell"
 import { useConfirm } from "./confirm-dialog"
+import { useI18n } from "@/lib/i18n/client"
+import { apiError } from "@/lib/i18n/api-error"
 
 interface NavItem {
   key: string
@@ -26,12 +28,18 @@ interface BusinessRow {
 // (PUT /api/admin-nav); the restaurant sees it on its next page load.
 export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | null }) {
   const { confirm, dialog } = useConfirm()
+  const { t, fmt } = useI18n()
+  const tRef = useRef(t)
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
   const [items, setItems] = useState<NavItem[]>([])
   const [rows, setRows] = useState<BusinessRow[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<Set<string>>(new Set())
   const [error, setError] = useState("")
   const [query, setQuery] = useState("")
+  const [onlyHidden, setOnlyHidden] = useState(false)
 
   // Loaded once; `loading` starts true, so nothing is set before the fetch.
   useEffect(() => {
@@ -43,7 +51,7 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
       if (res.ok) {
         setItems(j.items ?? [])
         setRows(j.businesses ?? [])
-      } else setError(j.error || "Could not load the sections")
+      } else setError(j.error ? apiError(tRef.current, j.error, res.status) : tRef.current.sections.loadFailed)
       setLoading(false)
     })()
     return () => {
@@ -63,7 +71,7 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
     const j = await res.json().catch(() => ({}))
     // Keep what the database stored; on failure put the previous value back.
     const stored: string[] = res.ok ? (j.hidden_items ?? hidden) : previous
-    if (!res.ok) setError(j.error || "Saving failed")
+    if (!res.ok) setError(`${t.sections.saveFailed}${j.error ? ` (${apiError(t, j.error, res.status)})` : ""}`)
     setRows((rs) => rs.map((r) => (r.business_id === businessId ? { ...r, hidden_items: stored } : r)))
     setSaving((s) => {
       const next = new Set(s)
@@ -82,9 +90,9 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
   const setAll = async (row: BusinessRow, visible: boolean) => {
     if (!visible) {
       const ok = await confirm({
-        title: `Hide every section for ${row.business_name}?`,
-        description: `All ${items.length} sections leave its admin panel menu and their pages answer “not found” from the restaurant's next page load. Staff can't take or manage orders from the panel until you show them again.`,
-        confirmLabel: "Hide all sections",
+        title: fmt(t.sections.hideTitle, { name: row.business_name }),
+        description: fmt(t.sections.hideBody, { n: items.length }),
+        confirmLabel: t.sections.hideConfirm,
         destructive: true,
       })
       if (!ok) return
@@ -94,15 +102,19 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((r) => r.business_name.toLowerCase().includes(q) || (r.slug ?? "").includes(q))
-  }, [rows, query])
+    return rows.filter(
+      (r) =>
+        (!onlyHidden || r.hidden_items.length > 0) &&
+        (!q || r.business_name.toLowerCase().includes(q) || (r.slug ?? "").includes(q)),
+    )
+  }, [rows, query, onlyHidden])
+  const withHidden = rows.filter((r) => r.hidden_items.length > 0).length
 
   return (
     <ConsoleShell adminEmail={adminEmail}>
       <PageHead
-        title="Admin panel sections"
-        description="Which sections each restaurant's admin panel shows. Unchecked sections leave the menu, their pages answer 404 and their code isn't sent. Changes save at once and apply on the restaurant's next page load."
+        title={t.sections.title}
+        description={t.sections.description}
       />
 
       {error && (
@@ -113,20 +125,31 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-          <CardTitle className="text-base">{loading ? "Loading…" : `${rows.length} restaurant${rows.length === 1 ? "" : "s"}`}</CardTitle>
-          <Input
-            className="w-full sm:w-64"
-            placeholder="Filter restaurants"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Filter restaurants"
-          />
+          <CardTitle className="text-base">{loading ? t.common.loading : t.sections.count(rows.length)}</CardTitle>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <Button
+              size="sm"
+              variant={onlyHidden ? "secondary" : "outline"}
+              aria-pressed={onlyHidden}
+              disabled={loading}
+              onClick={() => setOnlyHidden((v) => !v)}
+            >
+              {fmt(t.sections.withHidden, { n: withHidden })}
+            </Button>
+            <Input
+              className="w-full sm:w-64"
+              placeholder={t.sections.filterPlaceholder}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label={t.sections.filterPlaceholder}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
             <span className="flex items-center text-sm text-muted-foreground" role="status">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-              Loading sections…
+              {t.sections.loading}
             </span>
           ) : (
             <div className="overflow-x-auto rounded-md border">
@@ -134,14 +157,13 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="sticky left-0 z-10 min-w-[200px] bg-muted px-3 py-2 text-left font-medium">
-                      Restaurant
+                      {t.sections.restaurant}
                     </th>
                     {items.map((item) => (
                       <th key={item.key} scope="col" className="px-2 py-2 text-center text-xs font-medium whitespace-nowrap">
-                        {item.label}
+                        {t.sections.items[item.key] ?? item.label}
                       </th>
                     ))}
-                    <th className="px-3 py-2 text-center text-xs font-medium">All</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -152,37 +174,65 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
                         <th scope="row" className="sticky left-0 z-10 bg-background px-3 py-2 text-left font-normal">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{row.business_name}</span>
-                            {busy && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                            {busy && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" aria-hidden />}
                           </div>
-                          {row.slug && <div className="text-xs text-muted-foreground">{row.slug}</div>}
+                          <div className="text-xs text-muted-foreground">
+                            {row.slug && <span className="font-mono">{row.slug}</span>}
+                            {row.slug && " · "}
+                            {row.hidden_items.length === 0 ? (
+                              t.sections.allShown
+                            ) : (
+                              <span className="text-amber-700">
+                                {row.hidden_items.length === items.length ? t.sections.allHidden : fmt(t.sections.nHidden, { n: row.hidden_items.length })}
+                              </span>
+                            )}
+                          </div>
+                          <div className="-ml-2 mt-1 flex">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              disabled={busy || row.hidden_items.length === 0}
+                              aria-label={fmt(t.sections.showAllLabel, { name: row.business_name })}
+                              onClick={() => void setAll(row, true)}
+                            >
+                              {t.sections.showAll}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              disabled={busy || row.hidden_items.length === items.length}
+                              aria-label={fmt(t.sections.hideAllLabel, { name: row.business_name })}
+                              onClick={() => void setAll(row, false)}
+                            >
+                              {t.sections.hideAll}
+                            </Button>
+                          </div>
                         </th>
-                        {items.map((item) => (
-                          <td key={item.key} className="px-2 py-2 text-center">
+                        {items.map((item) => {
+                          const hidden = row.hidden_items.includes(item.key)
+                          return (
+                          <td key={item.key} className={hidden ? "bg-amber-50 px-2 py-2 text-center" : "px-2 py-2 text-center"}>
                             <input
                               type="checkbox"
-                              className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-wait"
+                              className="h-4 w-4 cursor-pointer accent-neutral-500 disabled:cursor-wait"
                               checked={!row.hidden_items.includes(item.key)}
                               disabled={busy}
                               onChange={() => toggle(row, item.key)}
-                              aria-label={`${item.label} for ${row.business_name}`}
+                              aria-label={fmt(t.sections.cellLabel, { section: t.sections.items[item.key] ?? item.label, name: row.business_name })}
                             />
+                            {hidden && <span className="mt-0.5 block text-xs font-medium leading-none text-amber-700">{t.sections.hidden}</span>}
                           </td>
-                        ))}
-                        <td className="px-3 py-2 text-center whitespace-nowrap">
-                          <Button size="sm" variant="ghost" disabled={busy} aria-label={`Show all sections for ${row.business_name}`} onClick={() => void setAll(row, true)}>
-                            Show all
-                          </Button>
-                          <Button size="sm" variant="ghost" disabled={busy} aria-label={`Hide all sections for ${row.business_name}`} onClick={() => void setAll(row, false)}>
-                            Hide all
-                          </Button>
-                        </td>
+                          )
+                        })}
                       </tr>
                     )
                   })}
                   {shown.length === 0 && (
                     <tr>
-                      <td colSpan={items.length + 2} className="px-3 py-6 text-center text-muted-foreground">
-                        No restaurants match.
+                      <td colSpan={items.length + 1} className="px-3 py-6 text-center text-muted-foreground">
+                        {t.sections.noMatch}
                       </td>
                     </tr>
                   )}

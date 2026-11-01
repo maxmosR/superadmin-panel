@@ -3,9 +3,11 @@
 import { ArrowRight, CheckCircle2, Circle, CircleAlert } from "lucide-react"
 import type { Readiness, SetupSection, SetupStep } from "@/lib/readiness"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n/client"
 
 /** One line for the restaurants table: ready, or how far along and what's left. */
 export function SetupSummary({ readiness }: { readiness: Readiness }) {
+  const { t, fmt } = useI18n()
   const open = readiness.steps.filter((s) => !s.done)
 
   if (readiness.ready) {
@@ -13,11 +15,11 @@ export function SetupSummary({ readiness }: { readiness: Readiness }) {
       <div className="space-y-1">
         <div className="flex items-center gap-1.5 text-sm font-medium text-green-700">
           <CheckCircle2 className="h-4 w-4" aria-hidden />
-          Ready to take orders
+          {t.setup.ready}
         </div>
         {/* Only the payout step can be open here: cash still works without it. */}
-        {open.length > 0 && <p className="text-xs text-muted-foreground">Cash only until the payout account is ready</p>}
-        {readiness.unpublishedZones && <p className="text-xs text-amber-700">Unpublished zone changes</p>}
+        {open.length > 0 && <p className="text-xs text-muted-foreground">{t.setup.cashOnly}</p>}
+        {readiness.unpublishedZones && <p className="text-xs text-amber-700">{t.setup.unpublishedZones}</p>}
       </div>
     )
   }
@@ -27,11 +29,12 @@ export function SetupSummary({ readiness }: { readiness: Readiness }) {
       <div className="flex items-center gap-2 text-sm font-medium">
         <CircleAlert className="h-4 w-4 text-amber-700" aria-hidden />
         <span>
-          Needs setup <span className="font-normal text-muted-foreground tabular-nums">· {readiness.done} of {readiness.total} done</span>
+          {t.setup.needsSetup}{" "}
+          <span className="font-normal text-muted-foreground tabular-nums">· {fmt(t.setup.progress, { done: readiness.done, total: readiness.total })}</span>
         </span>
       </div>
-      <p className="max-w-[18rem] text-xs text-muted-foreground">Missing: {open.map((s) => s.label).join(", ")}</p>
-      {readiness.unpublishedZones && <p className="text-xs text-amber-700">Unpublished zone changes</p>}
+      <p className="max-w-[18rem] text-xs text-muted-foreground">{fmt(t.setup.missing, { list: open.map((s) => t.setup.steps[s.key]).join(", ") })}</p>
+      {readiness.unpublishedZones && <p className="text-xs text-amber-700">{t.setup.unpublishedZones}</p>}
     </div>
   )
 }
@@ -50,14 +53,15 @@ export function SetupChecklist({
   zonesHref: string
   onJump: (section: SetupSection | "payout") => void
 }) {
+  const { t, fmt } = useI18n()
   return (
     <section aria-labelledby="setup-heading" className="rounded-lg border bg-muted/40 p-4">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="setup-heading" className="text-sm font-semibold">
-          {readiness.ready ? "Ready to take orders" : "Before it can take orders"}
+          {readiness.ready ? t.setup.ready : t.setup.before}
         </h3>
         <span className="text-xs text-muted-foreground tabular-nums">
-          {readiness.done} of {readiness.total} done
+          {fmt(t.setup.progress, { done: readiness.done, total: readiness.total })}
         </span>
       </div>
       <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
@@ -70,8 +74,8 @@ export function SetupChecklist({
             )}
             <div className="min-w-0">
               <span className={cn(step.done && "text-muted-foreground")}>
-                {step.label}
-                <span className="sr-only">{step.done ? ": done" : ": not done"}</span>
+                {t.setup.steps[step.key]}
+                <span className="sr-only">: {step.done ? t.common.done : t.common.notDone}</span>
               </span>
               {!step.done && <StepAction step={step} zonesHref={zonesHref} onJump={onJump} />}
             </div>
@@ -93,22 +97,24 @@ function StepAction({
 }) {
   const linkClass =
     "inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+  const { t } = useI18n()
   const { action } = step
+  const hint = step.hint ? t.setup.hints[step.hint] : null
 
-  if (action.kind === "owner") return <p className="text-xs text-muted-foreground">{step.hint}</p>
+  if (action.kind === "owner") return <p className="text-xs text-muted-foreground">{hint}</p>
   if (action.kind === "zones")
     return (
       <div>
         <a href={zonesHref} className={linkClass}>
-          Open the zones editor <ArrowRight className="h-3 w-3" aria-hidden />
+          {t.setup.openZones} <ArrowRight className="h-3 w-3" aria-hidden />
         </a>
       </div>
     )
   return (
     <div>
-      {step.hint && <p className="text-xs text-muted-foreground">{step.hint}</p>}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       <button type="button" className={linkClass} onClick={() => onJump(action.kind === "payout" ? "payout" : action.section)}>
-        Set it below <ArrowRight className="h-3 w-3" aria-hidden />
+        {t.setup.setBelow} <ArrowRight className="h-3 w-3" aria-hidden />
       </button>
     </div>
   )

@@ -12,6 +12,8 @@ import { CheckCircle2, Loader2, MapPinned, Pencil, Plus, Search } from "lucide-r
 import { domainDisplayHost } from "@/lib/domains"
 import { getReadiness } from "@/lib/readiness"
 import { ConsoleShell, PageHead } from "./console-shell"
+import { useI18n } from "@/lib/i18n/client"
+import { apiError } from "@/lib/i18n/api-error"
 import { SetupSummary } from "./setup-status"
 import { CreateBusinessDialog } from "./create-business-dialog"
 import { EditBusinessDialog, type EditFocus } from "./edit-business-dialog"
@@ -64,6 +66,12 @@ export function SuperAdminDashboard({
   adminEmail: string | null
   rootDomain: string
 }) {
+  const { t, fmt } = useI18n()
+  // Latest strings for the loader, so switching language doesn't refetch.
+  const tRef = useRef(t)
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
   const [businesses, setBusinesses] = useState<BusinessRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -92,7 +100,7 @@ export function SuperAdminDashboard({
       const res = await fetch("/api/businesses")
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error || `Failed to load (${res.status})`)
+        throw new Error(apiError(tRef.current, j.error, res.status))
       }
       const j = await res.json()
       const rows: BusinessRow[] = j.businesses ?? []
@@ -108,7 +116,8 @@ export function SuperAdminDashboard({
         return row ? { ...e, row } : null
       })
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load restaurants")
+      // fetch() itself throws a TypeError when the server can't be reached.
+      setError(e instanceof Error && !(e instanceof TypeError) ? e.message : tRef.current.common.network)
     } finally {
       setLoading(false)
     }
@@ -141,12 +150,12 @@ export function SuperAdminDashboard({
   return (
     <ConsoleShell adminEmail={adminEmail}>
       <PageHead
-        title="Restaurants"
-        description="Set up restaurants, their owners and staff, and get them ready to take orders."
+        title={t.dashboard.title}
+        description={t.dashboard.description}
         action={
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4" aria-hidden />
-            New restaurant
+            {t.dashboard.newRestaurant}
           </Button>
         }
       />
@@ -159,9 +168,9 @@ export function SuperAdminDashboard({
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-            <span>Couldn&apos;t load the restaurants: {error}</span>
+            <span>{fmt(t.dashboard.loadFailed, { error })}</span>
             <Button variant="outline" size="sm" onClick={() => void load()}>
-              Try again
+              {t.common.tryAgain}
             </Button>
           </AlertDescription>
         </Alert>
@@ -169,12 +178,12 @@ export function SuperAdminDashboard({
 
       <Card className="gap-0 py-0">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-6">
-          <div role="group" aria-label="Show" className="inline-flex rounded-md border bg-muted/50 p-0.5">
+          <div role="group" aria-label={t.dashboard.filterLabel} className="inline-flex rounded-md border bg-muted/50 p-0.5">
             <FilterButton active={filter === "all"} onClick={() => setFilter("all")}>
-              All <span className="tabular-nums text-muted-foreground">{loading ? "" : businesses.length}</span>
+              {t.dashboard.all} <span className="tabular-nums text-muted-foreground">{loading ? "" : businesses.length}</span>
             </FilterButton>
             <FilterButton active={filter === "setup"} onClick={() => setFilter("setup")}>
-              Needs setup <span className="tabular-nums text-muted-foreground">{loading ? "" : needsSetup}</span>
+              {t.dashboard.needsSetup} <span className="tabular-nums text-muted-foreground">{loading ? "" : needsSetup}</span>
             </FilterButton>
           </div>
           <div className="relative w-full sm:w-72">
@@ -182,8 +191,8 @@ export function SuperAdminDashboard({
             <Input
               type="search"
               className="pl-9"
-              placeholder="Search name, slug or domain"
-              aria-label="Search restaurants"
+              placeholder={t.dashboard.searchPlaceholder}
+              aria-label={t.dashboard.searchLabel}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -193,20 +202,20 @@ export function SuperAdminDashboard({
         {loading ? (
           <div className="flex items-center justify-center py-16 text-sm text-muted-foreground" role="status">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-            Loading restaurants…
+            {t.dashboard.loading}
           </div>
         ) : businesses.length === 0 ? (
           <div className="px-6 py-16 text-center">
-            <p className="font-medium">No restaurants yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">Create the first one with its owner; the setup checklist takes it from there.</p>
+            <p className="font-medium">{t.dashboard.emptyTitle}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t.dashboard.emptyBody}</p>
             <Button className="mt-4" onClick={() => setDialogOpen(true)}>
               <Plus className="h-4 w-4" aria-hidden />
-              New restaurant
+              {t.dashboard.newRestaurant}
             </Button>
           </div>
         ) : shown.length === 0 ? (
           <div className="px-6 py-16 text-center text-sm text-muted-foreground">
-            {filter === "setup" && !query ? "Every restaurant is ready to take orders." : "No restaurant matches this search."}{" "}
+            {filter === "setup" && !query ? t.dashboard.allReady : t.dashboard.noMatch}{" "}
             <button
               type="button"
               className="font-medium text-primary underline-offset-2 hover:underline"
@@ -215,93 +224,70 @@ export function SuperAdminDashboard({
                 setFilter("all")
               }}
             >
-              Show all
+              {t.common.showAll}
             </button>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="pl-4 sm:pl-6">Restaurant</TableHead>
-                <TableHead>Setup</TableHead>
-                <TableHead>Domains</TableHead>
-                <TableHead>Payout account</TableHead>
-                <TableHead className="pr-4 text-right sm:pr-6">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* Wide screens: one row per restaurant. */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="pl-6">{t.dashboard.colRestaurant}</TableHead>
+                    <TableHead>{t.dashboard.colSetup}</TableHead>
+                    <TableHead>{t.dashboard.colDomains}</TableHead>
+                    <TableHead>{t.dashboard.colPayout}</TableHead>
+                    <TableHead className="pr-6 text-right">
+                      <span className="sr-only">{t.dashboard.colActions}</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {shown.map(({ row: b, readiness }) => (
+                    <TableRow key={b.business_id} className="align-top">
+                      <TableCell className="min-w-[12rem] py-3 pl-6 whitespace-normal">
+                        <RestaurantName row={b} />
+                      </TableCell>
+                      <TableCell className="min-w-[13rem] py-3 whitespace-normal">
+                        <SetupSummary readiness={readiness} />
+                      </TableCell>
+                      <TableCell className="max-w-[15rem] py-3 whitespace-normal">
+                        <DomainList domains={b.domains} rootDomain={rootDomain} />
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <PayoutAccountCell businessId={b.business_id} businessName={b.business_name} account={b.payout_account ?? null} onCreated={load} />
+                      </TableCell>
+                      <TableCell className="py-3 pr-6 text-right">
+                        <RowActions row={b} ready={readiness.ready} onEdit={(trigger) => setEditing({ row: b, trigger })} className="justify-end" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Phones: the same facts stacked, actions last, nothing to scroll sideways. */}
+            <ul className="divide-y md:hidden">
               {shown.map(({ row: b, readiness }) => (
-                <TableRow key={b.business_id} className="align-top">
-                  <TableCell className="min-w-[12rem] py-3 pl-4 whitespace-normal sm:pl-6">
-                    <div className="font-medium">{b.business_name}</div>
-                    <div className="mt-0.5 font-mono text-xs text-muted-foreground">{b.slug}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {b.config?.currency ?? "EUR"} · created {formatDate(b.created_at)}
-                    </div>
-                  </TableCell>
-                  <TableCell className="min-w-[13rem] py-3 whitespace-normal">
-                    <SetupSummary readiness={readiness} />
-                  </TableCell>
-                  <TableCell className="max-w-[15rem] py-3 whitespace-normal">
-                    {b.domains?.length ? (
-                      <ul className="flex flex-col gap-1">
-                        {b.domains.map((d) => {
-                          const host = domainDisplayHost(d.domain, rootDomain)
-                          return (
-                            <li key={d.domain} className="flex flex-wrap items-center gap-x-1.5 text-sm break-all">
-                              {d.is_active ? (
-                                <a href={`http://${host}`} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
-                                  {host}
-                                </a>
-                              ) : (
-                                <span className="text-muted-foreground line-through">{host}</span>
-                              )}
-                              {d.is_primary && <Badge variant="secondary">primary</Badge>}
-                              {!d.is_active && <span className="text-xs text-muted-foreground">off</span>}
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">None</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="py-3">
-                    <PayoutAccountCell businessId={b.business_id} businessName={b.business_name} account={b.payout_account ?? null} onCreated={load} />
-                  </TableCell>
-                  <TableCell className="py-3 pr-4 text-right sm:pr-6">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant={readiness.ready ? "ghost" : "outline"}
-                        size="sm"
-                        data-edit-restaurant={b.business_id}
-                        onClick={(e) => setEditing({ row: b, trigger: e.currentTarget })}
-                      >
-                        {readiness.ready ? (
-                          <>
-                            <Pencil className="h-4 w-4" aria-hidden />
-                            Edit
-                          </>
-                        ) : (
-                          "Continue setup"
-                        )}
-                        <span className="sr-only"> {b.business_name}</span>
-                      </Button>
-                      <Button variant="ghost" size="sm" asChild>
-                        <a href={`/businesses/${b.business_id}/zones`}>
-                          <MapPinned className="h-4 w-4" aria-hidden />
-                          Zones
-                          <span className="sr-only"> for {b.business_name}</span>
-                        </a>
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <li key={b.business_id} className="space-y-3 px-4 py-4">
+                  <RestaurantName row={b} />
+                  <SetupSummary readiness={readiness} />
+                  <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+                    <dt className="text-muted-foreground">{t.dashboard.colDomains}</dt>
+                    <dd className="min-w-0">
+                      <DomainList domains={b.domains} rootDomain={rootDomain} />
+                    </dd>
+                    <dt className="text-muted-foreground">{t.dashboard.payoutShort}</dt>
+                    <dd className="min-w-0">
+                      <PayoutAccountCell businessId={b.business_id} businessName={b.business_name} account={b.payout_account ?? null} onCreated={load} />
+                    </dd>
+                  </dl>
+                  <RowActions row={b} ready={readiness.ready} onEdit={(trigger) => setEditing({ row: b, trigger })} className="-ml-3" />
+                </li>
               ))}
-            </TableBody>
-          </Table>
+            </ul>
+          </>
         )}
       </Card>
 
@@ -325,12 +311,86 @@ export function SuperAdminDashboard({
         business={editing?.row ?? null}
         focus={editing?.focus}
         returnFocus={editing?.trigger}
-        onDone={(name) => announce(`Saved changes to ${name}.`)}
+        onDone={(name) => announce(fmt(t.dashboard.saved, { name }))}
         onOpenChange={(open) => !open && setEditing(null)}
         rootDomain={rootDomain}
         onSaved={load}
       />
     </ConsoleShell>
+  )
+}
+
+function RestaurantName({ row }: { row: BusinessRow }) {
+  const { t, fmt, locale } = useI18n()
+  return (
+    <div>
+      <div className="font-medium">{row.business_name}</div>
+      <div className="mt-0.5 font-mono text-xs text-muted-foreground">{row.slug}</div>
+      <div className="text-xs text-muted-foreground">
+        {fmt(t.dashboard.created, { currency: row.config?.currency ?? "EUR", date: formatDate(row.created_at, locale) })}
+      </div>
+    </div>
+  )
+}
+
+function DomainList({ domains, rootDomain }: { domains: BusinessRow["domains"]; rootDomain: string }) {
+  const { t } = useI18n()
+  if (!domains?.length) return <span className="text-sm text-muted-foreground">{t.common.none}</span>
+  return (
+    <ul className="flex flex-col gap-1">
+      {domains.map((d) => {
+        const host = domainDisplayHost(d.domain, rootDomain)
+        return (
+          <li key={d.domain} className="flex flex-wrap items-center gap-x-1.5 text-sm break-all">
+            {d.is_active ? (
+              <a href={`http://${host}`} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+                {host}
+              </a>
+            ) : (
+              <span className="text-muted-foreground line-through">{host}</span>
+            )}
+            {d.is_primary && <Badge variant="secondary">{t.common.primary}</Badge>}
+            {!d.is_active && <span className="text-xs text-muted-foreground">{t.common.off}</span>}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function RowActions({
+  row,
+  ready,
+  onEdit,
+  className,
+}: {
+  row: BusinessRow
+  ready: boolean
+  onEdit: (trigger: HTMLElement) => void
+  className?: string
+}) {
+  const { t, fmt } = useI18n()
+  return (
+    <div className={"flex items-center gap-1 " + (className ?? "")}>
+      <Button variant={ready ? "ghost" : "outline"} size="sm" data-edit-restaurant={row.business_id} onClick={(e) => onEdit(e.currentTarget)}>
+        {ready ? (
+          <>
+            <Pencil className="h-4 w-4" aria-hidden />
+            {t.common.edit}
+          </>
+        ) : (
+          t.common.continueSetup
+        )}
+        <span className="sr-only"> {row.business_name}</span>
+      </Button>
+      <Button variant="ghost" size="sm" asChild>
+        <a href={`/businesses/${row.business_id}/zones`}>
+          <MapPinned className="h-4 w-4" aria-hidden />
+          {t.dashboard.zones}
+          <span className="sr-only">{fmt(t.dashboard.zonesFor, { name: row.business_name })}</span>
+        </a>
+      </Button>
+    </div>
   )
 }
 
@@ -350,8 +410,9 @@ function FilterButton({ active, onClick, children }: { active: boolean; onClick:
   )
 }
 
-const dateFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Rome" })
-function formatDate(iso: string) {
+function formatDate(iso: string, locale: string) {
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? "—" : dateFormat.format(d)
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Rome" }).format(d)
 }

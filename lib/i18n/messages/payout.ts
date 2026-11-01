@@ -1,0 +1,46 @@
+// Payout account (Stripe connected account) cell.
+export const en = {
+  create: "Create payout account",
+  thisRestaurant: "this restaurant",
+  createTitle: "Create a payout account for {name}?",
+  createBody1: "This creates the restaurant's Stripe connected account, where its card payments are paid out.",
+  createBody2: "The owner then finishes Stripe's onboarding (identity and bank details). Until then, card payments stay off.",
+  createBody3: "The account can't be deleted from the console.",
+  createConfirm: "Create account",
+  errors: {
+    payment_gateway_unavailable: "Stripe didn't answer. Try again in a minute.",
+    unauthenticated: "Your session ended. Sign in again and retry.",
+  } as Record<string, string>,
+  createFailed: "Couldn't create the account ({reason}).",
+  copyTitle: "Copy account id",
+  copyLabel: "Copy Stripe account id {id}",
+  copied: "copied",
+  chargesOn: "charges on",
+  chargesOff: "charges off",
+  payoutsOn: "payouts on",
+  payoutsOff: "payouts off",
+  due: (n: number) => (n === 1 ? "1 requirement due" : `${n} requirements due`),
+}
+
+export const it: typeof en = {
+  create: "Crea conto incassi",
+  thisRestaurant: "questo ristorante",
+  createTitle: "Creare un conto incassi per {name}?",
+  createBody1: "Crea il conto Stripe collegato del ristorante, dove vengono accreditati i pagamenti con carta.",
+  createBody2: "Poi il titolare completa la registrazione su Stripe (identità e dati bancari). Fino ad allora i pagamenti con carta restano spenti.",
+  createBody3: "Il conto non si può eliminare dalla console.",
+  createConfirm: "Crea il conto",
+  errors: {
+    payment_gateway_unavailable: "Stripe non ha risposto. Riprova tra un minuto.",
+    unauthenticated: "La sessione è scaduta. Accedi di nuovo e riprova.",
+  },
+  createFailed: "Impossibile creare il conto ({reason}).",
+  copyTitle: "Copia l'id del conto",
+  copyLabel: "Copia l'id del conto Stripe {id}",
+  copied: "copiato",
+  chargesOn: "incassi attivi",
+  chargesOff: "incassi spenti",
+  payoutsOn: "bonifici attivi",
+  payoutsOff: "bonifici spenti",
+  due: (n: number) => (n === 1 ? "1 requisito da completare" : `${n} requisiti da completare`),
+}

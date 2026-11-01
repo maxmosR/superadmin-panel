@@ -15,6 +15,8 @@ import type { IssueRef, LatLng, PieceCollection, RuleMode, ZoneIssue } from "@/l
 import { ZONE_LIMITS } from "@/lib/zones/types"
 import { PlacesSearch } from "./places-search"
 import { ringColor } from "./zone-map"
+import { useI18n } from "@/lib/i18n/client"
+import { issueText, libText } from "./zone-text"
 
 type Edit = (fn: (s: EditorState) => EditorState) => void
 
@@ -33,45 +35,48 @@ export function CenterStep({
   readOnly: boolean
   onPick: (p: LatLng) => void
 }) {
+  const { t } = useI18n()
   const [text, setText] = useState("")
   const typed = parseLatLngText(text)
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        The restaurant&apos;s location. Search its address, or click the map, then drag the red pin to adjust.
-      </p>
+      <p className="text-sm text-muted-foreground">{t.zones.centerIntro}</p>
       <PlacesSearch
-        placeholder="Search the restaurant's address"
+        placeholder={t.zones.searchRestaurant}
         disabled={readOnly}
         bias={origin ? { center: origin, radiusM: outerM + 2000 } : null}
         onPick={(p) => onPick(p.point)}
       />
       <div className="flex gap-2">
-        <Input placeholder="or paste lat, lng" value={text} onChange={(e) => setText(e.target.value)} disabled={readOnly} />
+        <Input
+          placeholder={t.zones.pasteLatLng}
+          aria-label={t.zones.pasteLatLngLabel}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          disabled={readOnly}
+        />
         <Button variant="outline" disabled={readOnly || !typed} onClick={() => typed && onPick(typed)}>
-          Set
+          {t.zones.set}
         </Button>
       </div>
       <Separator />
       {origin ? (
         <dl className="space-y-1 text-sm">
           <div className="flex justify-between">
-            <dt className="text-muted-foreground">Coordinates</dt>
+            <dt className="text-muted-foreground">{t.zones.coordinates}</dt>
             <dd className="font-mono">{formatLatLng(origin)}</dd>
           </div>
           {liveOrigin && (
             <div className="flex justify-between">
-              <dt className="text-muted-foreground">From the live center</dt>
+              <dt className="text-muted-foreground">{t.zones.fromLive}</dt>
               <dd>{formatDistance(distanceM(liveOrigin, origin))}</dd>
             </div>
           )}
         </dl>
       ) : (
-        <p className="text-sm text-amber-700">No center point yet: click the map to place it.</p>
+        <p className="text-sm text-amber-700">{t.zones.noCenter}</p>
       )}
-      <p className="text-xs text-muted-foreground">
-        The restaurant&apos;s stored coordinates change only when you publish.
-      </p>
+      <p className="text-xs text-muted-foreground">{t.zones.centerNote}</p>
     </div>
   )
 }
@@ -89,6 +94,7 @@ export function RingsStep({
   edit: Edit
   onShow: (ref: IssueRef) => void
 }) {
+  const { t, fmt } = useI18n()
   const errors = ringErrors(rings)
   const setRow = (key: string, patch: Partial<RingRow>) =>
     edit((s) => ({ ...s, rings: s.rings.map((r) => (r.key === key ? { ...r, ...patch } : r)) }))
@@ -97,9 +103,7 @@ export function RingsStep({
   )
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Each ring delivers up to its distance for its fee, with an optional minimum order. Drag a ring&apos;s dot on the map to change its distance.
-      </p>
+      <p className="text-sm text-muted-foreground">{t.zones.ringsIntro}</p>
       <div className="space-y-2">
         {rings.map((r) => {
           const e = errors[r.key] ?? {}
@@ -107,56 +111,60 @@ export function RingsStep({
           return (
             <div key={r.key} className="rounded-md border p-2">
               <div className="flex items-center gap-2 text-sm">
-                <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: idx ? ringColor(idx) : "#d1d5db" }} />
-                <span className="shrink-0">up to</span>
+                <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: idx ? ringColor(idx) : "#d1d5db" }} aria-hidden />
+                <span className="shrink-0">{t.zones.upTo}</span>
                 <Input
                   className="h-8 w-20"
                   inputMode="decimal"
+                  aria-label={t.zones.distanceLabel}
                   value={r.km}
                   aria-invalid={!!e.km}
                   disabled={readOnly}
                   onChange={(ev) => setRow(r.key, { km: ev.target.value })}
                   onBlur={() => edit((s) => ({ ...s, rings: sortRings(s.rings) }))}
                 />
-                <span className="shrink-0">km → €</span>
+                <span className="shrink-0">{t.zones.kmTo}</span>
                 <Input
                   className="h-8 w-20"
                   inputMode="decimal"
+                  aria-label={t.zones.feeLabel}
                   value={r.fee}
                   aria-invalid={!!e.fee}
                   disabled={readOnly}
                   onChange={(ev) => setRow(r.key, { fee: ev.target.value })}
                 />
-                <Button size="icon" variant="ghost" className="h-8 w-8" title="Show on map" onClick={() => onShow({ kind: "ring", id: r.key })}>
-                  <MapPin className="h-4 w-4" />
+                <Button size="icon" variant="ghost" className="h-8 w-8" title={t.zones.showOnMap} aria-label={t.zones.showOnMap} onClick={() => onShow({ kind: "ring", id: r.key })}>
+                  <MapPin className="h-4 w-4" aria-hidden />
                 </Button>
                 <Button
                   size="icon"
                   variant="ghost"
                   className="h-8 w-8"
-                  title="Remove ring"
+                  title={t.zones.removeRing}
+                  aria-label={t.zones.removeRing}
                   disabled={readOnly}
                   onClick={() => edit((s) => ({ ...s, rings: s.rings.filter((x) => x.key !== r.key) }))}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" aria-hidden />
                 </Button>
               </div>
               <div className="mt-2 flex items-center gap-2 text-sm">
-                <span className="shrink-0">min. order €</span>
+                <span className="shrink-0">{t.zones.minOrder}</span>
                 <Input
                   className="h-8 w-24"
                   inputMode="decimal"
-                  placeholder="none"
+                  placeholder={t.zones.minOrderNone}
                   value={r.minOrder}
                   aria-invalid={!!e.minOrder}
-                  aria-label="Minimum order in euros"
+                  aria-label={t.zones.minOrderLabel}
                   disabled={readOnly}
                   onChange={(ev) => setRow(r.key, { minOrder: ev.target.value })}
                 />
               </div>
               <Input
                 className="mt-2 h-8"
-                placeholder="Label (optional)"
+                placeholder={t.zones.labelOptional}
+                aria-label={t.zones.labelOptional}
                 value={r.label}
                 maxLength={ZONE_LIMITS.maxLabel}
                 disabled={readOnly}
@@ -164,7 +172,13 @@ export function RingsStep({
               />
               {(e.km || e.fee || e.minOrder) && (
                 <p className="mt-1 text-xs text-destructive">
-                  {[e.km && `Distance: ${e.km}`, e.fee && `Fee: ${e.fee}`, e.minOrder && `Min. order: ${e.minOrder}`].filter(Boolean).join(" · ")}
+                  {[
+                    e.km && fmt(t.zones.ringErrors.distance, { e: libText(t, e.km) }),
+                    e.fee && fmt(t.zones.ringErrors.fee, { e: libText(t, e.fee) }),
+                    e.minOrder && fmt(t.zones.ringErrors.minOrder, { e: libText(t, e.minOrder) }),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
               )}
             </div>
@@ -184,11 +198,9 @@ export function RingsStep({
           })
         }
       >
-        <Plus className="mr-1 h-4 w-4" /> Add ring
+        <Plus className="mr-1 h-4 w-4" aria-hidden /> {t.zones.addRing}
       </Button>
-      <p className="text-xs text-muted-foreground">
-        Distances 0.1–50 km (one decimal). Fees in euros, e.g. 3,50 or 3.50. A blank fee is never saved as €0. The minimum order is the products subtotal without delivery; leave it blank for none. The restaurant&apos;s own minimum still applies, so the higher one counts. A point exactly on a ring&apos;s edge belongs to the inner ring.
-      </p>
+      <p className="text-xs text-muted-foreground">{t.zones.ringsHelp}</p>
     </div>
   )
 }
@@ -214,21 +226,21 @@ export function CutStep({
   onSelect: (id: string | null) => void
   edit: Edit
 }) {
+  const { t, fmt } = useI18n()
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Straight cut lines split the rings into pieces, e.g. along a river. Each line is extended automatically past the outer ring (dashed).
-      </p>
+      <p className="text-sm text-muted-foreground">{t.zones.cutIntro}</p>
       <Button
-        variant={drawing ? "default" : "outline"}
+        variant={drawing ? "secondary" : "outline"}
+        aria-pressed={drawing}
         disabled={readOnly || (!drawing && lines.length >= ZONE_LIMITS.maxLines)}
         onClick={() => onDrawing(!drawing)}
       >
-        {drawing ? "Cancel drawing" : "Draw cut line"}
+        {drawing ? t.zones.cancelDrawing : t.zones.drawLine}
       </Button>
-      {drawing && <p className="text-xs text-muted-foreground">Click points on the map; click the last point again (double-click) to finish.</p>}
+      {drawing && <p className="text-xs text-muted-foreground">{t.zones.drawHelp}</p>}
       <div className="space-y-2">
-        {lines.length === 0 && <p className="text-sm text-muted-foreground">No cut lines.</p>}
+        {lines.length === 0 && <p className="text-sm text-muted-foreground">{t.zones.noLines}</p>}
         {lines.map((l, i) => {
           const lineIssues = issues.filter((x) => x.ref?.kind === "line" && x.ref.id === l.id)
           return (
@@ -238,14 +250,15 @@ export function CutStep({
               onClick={() => onSelect(l.id)}
             >
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Line {i + 1}</span>
-                <span className="text-xs text-muted-foreground">{l.points.length} points</span>
+                <span className="text-sm font-medium">{fmt(t.zones.line, { n: i + 1 })}</span>
+                <span className="text-xs text-muted-foreground">{t.zones.points(l.points.length)}</span>
                 <div className="flex-1" />
                 <Button
                   size="icon"
                   variant="ghost"
                   className="h-7 w-7"
-                  title="Delete line"
+                  title={t.zones.deleteLine}
+                  aria-label={t.zones.deleteLine}
                   disabled={readOnly}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -253,12 +266,13 @@ export function CutStep({
                     if (selectedLineId === l.id) onSelect(null)
                   }}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" aria-hidden />
                 </Button>
               </div>
               <Input
                 className="mt-2 h-8"
-                placeholder='Name, e.g. "river Bisagno"'
+                placeholder={t.zones.lineName}
+                aria-label={fmt(t.zones.lineNameLabel, { n: i + 1 })}
                 value={l.label ?? ""}
                 maxLength={ZONE_LIMITS.maxLabel}
                 disabled={readOnly}
@@ -266,23 +280,23 @@ export function CutStep({
               />
               {lineIssues.map((x) => (
                 <p key={x.code} className={`mt-1 text-xs ${x.severity === "blocker" ? "text-destructive" : "text-amber-700"}`}>
-                  {x.message}
+                  {issueText(t, x)}
                 </p>
               ))}
             </div>
           )
         })}
       </div>
-      <p className="text-xs text-muted-foreground">Select a line to drag its points. Straight segments only.</p>
+      <p className="text-xs text-muted-foreground">{t.zones.cutHelp}</p>
     </div>
   )
 }
 
 // ---- 4. Pieces ---------------------------------------------------------------------
 
-export function pieceState(p: { deliverable: boolean; rule_id: string | null }): "ring fee" | "custom fee" | "no delivery" {
-  if (!p.deliverable) return "no delivery"
-  return p.rule_id ? "custom fee" : "ring fee"
+export function pieceState(p: { deliverable: boolean; rule_id: string | null }): "ring" | "custom" | "none" {
+  if (!p.deliverable) return "none"
+  return p.rule_id ? "custom" : "ring"
 }
 
 export function PiecesStep({
@@ -296,23 +310,22 @@ export function PiecesStep({
   onHover: (id: string | null) => void
   onShow: (ref: IssueRef) => void
 }) {
+  const { t } = useI18n()
   const list = pieces?.features ?? []
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Click a piece on the map to set it to the ring fee, a custom fee, or no delivery. Drag the small pins to move a setting.
-      </p>
+      <p className="text-sm text-muted-foreground">{t.zones.piecesIntro}</p>
       {list.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No pieces yet: add a center point and rings.</p>
+        <p className="text-sm text-muted-foreground">{t.zones.noPieces}</p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Ring</TableHead>
-              <TableHead>Fee</TableHead>
-              <TableHead>Min. order</TableHead>
-              <TableHead>State</TableHead>
-              <TableHead className="text-right">Area</TableHead>
+              <TableHead>{t.zones.colRing}</TableHead>
+              <TableHead>{t.zones.colFee}</TableHead>
+              <TableHead>{t.zones.colMinOrder}</TableHead>
+              <TableHead>{t.zones.colState}</TableHead>
+              <TableHead className="text-right">{t.zones.colArea}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -333,7 +346,7 @@ export function PiecesStep({
                   <TableCell>{p.deliverable ? formatEuro(p.fee) : "—"}</TableCell>
                   <TableCell>{p.deliverable && p.min_order > 0 ? formatEuro(p.min_order) : "—"}</TableCell>
                   <TableCell>
-                    <div>{pieceState(p)}</div>
+                    <div>{t.zones.pieceStates[pieceState(p)]}</div>
                     {p.label && <div className="text-xs text-muted-foreground">{p.label}</div>}
                   </TableCell>
                   <TableCell className="text-right text-xs">{formatArea(p.area_m2)}</TableCell>
@@ -366,6 +379,7 @@ export function PiecePopover({
   onClose: () => void
   edit: Edit
 }) {
+  const { t, fmt } = useI18n()
   const piece = pieces?.features.find((f) => f.id === popover.pieceId)
   const rule = piece?.properties.rule_id ? state.rules.find((u) => u.id === piece.properties.rule_id) : undefined
   const ringRow = state.rings.find((r) => parseKm(r.km) === piece?.properties.radius_m)
@@ -396,22 +410,23 @@ export function PiecePopover({
       style={{ left: Math.max(16, Math.min(popover.pixel.x + 12, 9999)), top: Math.max(16, popover.pixel.y - 20) }}
     >
       <div className="mb-2 flex items-center justify-between">
-        <span className="font-medium">Ring {piece.properties.ring_index} piece</span>
-        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onClose}>
-          <X className="h-4 w-4" />
+        <span className="font-medium">{fmt(t.zones.pieceTitle, { n: piece.properties.ring_index })}</span>
+        <Button size="icon" variant="ghost" className="h-6 w-6" aria-label={t.common.close} onClick={onClose}>
+          <X className="h-4 w-4" aria-hidden />
         </Button>
       </div>
       <div className="space-y-2">
         <label className="flex items-center gap-2">
           <input type="radio" checked={mode === "ring_fee"} onChange={() => setMode("ring_fee")} />
-          Ring fee ({formatEuro(ringFee)})
+          {fmt(t.zones.ringFee, { fee: formatEuro(ringFee) })}
         </label>
         <label className="flex items-center gap-2">
           <input type="radio" checked={mode === "custom_fee"} onChange={() => setMode("custom_fee")} />
-          Custom fee €
+          {t.zones.customFee}
           <Input
             className="h-7 w-20"
             inputMode="decimal"
+            aria-label={t.zones.customFeeLabel}
             value={fee}
             aria-invalid={mode === "custom_fee" && invalid}
             onFocus={() => setMode("custom_fee")}
@@ -420,21 +435,21 @@ export function PiecePopover({
         </label>
         <label className="flex items-center gap-2">
           <input type="radio" checked={mode === "excluded"} onChange={() => setMode("excluded")} />
-          Don&apos;t deliver
+          {t.zones.dontDeliver}
         </label>
         <div className="space-y-1">
-          <Label className="text-xs">Label (optional)</Label>
+          <Label className="text-xs">{t.zones.labelOptional}</Label>
           <Input className="h-8" value={label} maxLength={ZONE_LIMITS.maxLabel} onChange={(e) => setLabel(e.target.value)} />
         </div>
         {rule && (
           <p className="text-xs text-muted-foreground">
-            Setting pinned {formatDistance(distanceM(rule.anchor, popover.at))} from where you clicked.
+            {fmt(t.zones.pinnedFrom, { d: formatDistance(distanceM(rule.anchor, popover.at)) })}
           </p>
         )}
         <div className="flex justify-end gap-2 pt-1">
-          {piece.properties.rule_id && <Badge variant="secondary">has a setting</Badge>}
+          {piece.properties.rule_id && <Badge variant="secondary">{t.zones.hasSetting}</Badge>}
           <Button size="sm" onClick={apply} disabled={invalid}>
-            Apply
+            {t.zones.apply}
           </Button>
         </div>
       </div>

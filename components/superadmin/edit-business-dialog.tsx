@@ -25,6 +25,8 @@ import { SetupChecklist } from "./setup-status"
 import { Field } from "./field"
 import { useConfirm } from "./confirm-dialog"
 import type { BusinessRow } from "./superadmin-dashboard"
+import { useI18n } from "@/lib/i18n/client"
+import { apiError } from "@/lib/i18n/api-error"
 
 /** A section to scroll to when the dialog opens. */
 export type EditFocus = SetupSection | "payout"
@@ -46,17 +48,10 @@ interface Props {
 // (PATCH /api/businesses), then order settings (PUT …/order-settings).
 const ORDER_FIELDS = ["order_notification_email", "pay_card", "pay_cash"]
 
-// Order-settings refusals in plain words; anything else shows its code.
-const ORDER_ERRORS: Record<string, string> = {
-  invalid_email: "the order email isn't a valid address",
-  invalid_payment_methods: "keep at least one payment method on",
-  not_found: "the restaurant no longer exists",
-  not_operator: "your operator access has ended",
-}
-
 const sectionId = (s: EditFocus) => `edit-section-${s}`
 
 export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange, rootDomain, onSaved, onDone }: Props) {
+  const { t, fmt } = useI18n()
   const { confirm, dialog } = useConfirm()
   const [form, setForm] = useState<Record<string, string>>({})
   // What the fields held when opened (or last saved): the dirty check compares against it.
@@ -114,9 +109,9 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
     if (submitting) return
     if (dirty) {
       const ok = await confirm({
-        title: "Discard your changes?",
-        description: "The fields you edited haven't been saved. Domains, staff, providers and the payout account already saved on their own.",
-        confirmLabel: "Discard changes",
+        title: t.edit.discardTitle,
+        description: t.edit.discardBody,
+        confirmLabel: t.edit.discardConfirm,
         destructive: true,
       })
       if (!ok) return
@@ -150,7 +145,7 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
     setError("")
 
     if (form.pay_card === "off" && form.pay_cash === "off") {
-      setError("Keep at least one payment method on.")
+      setError(t.edit.keepOnePayment)
       return
     }
 
@@ -179,7 +174,7 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
         }),
       })
       const j = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(`Nothing was saved: ${j.error || `request failed (${res.status})`}.`)
+      if (!res.ok) throw new Error(fmt(t.edit.nothingSaved, { reason: apiError(t, j.error, res.status) }))
       detailsSaved = true
 
       // Order email and payment methods: their own command (set_order_settings).
@@ -195,7 +190,9 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
       const j2 = await res2.json().catch(() => ({}))
       if (!res2.ok)
         throw new Error(
-          `Details, branding and configuration were saved, but the order email and payment methods weren't: ${ORDER_ERRORS[j2.error] ?? j2.error ?? `request failed (${res2.status})`}. Fix them and save again.`,
+          fmt(t.edit.partialSave, {
+            reason: t.edit.orderErrors[j2.error] ?? j2.error ?? fmt(t.edit.requestFailedLower, { status: res2.status }),
+          }),
         )
 
       setBaseline(form)
@@ -212,7 +209,7 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
         })
         onSaved()
       }
-      setError(e instanceof Error ? e.message : "Couldn't save the restaurant.")
+      setError(e instanceof Error && !(e instanceof TypeError) ? e.message : `${t.edit.saveFailed} ${t.common.network}`)
     } finally {
       setSubmitting(false)
     }
@@ -230,7 +227,10 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
           const target =
             (returnFocus?.isConnected ? returnFocus : null) ??
             (lastBusinessId.current
-              ? document.querySelector<HTMLElement>(`[data-edit-restaurant="${lastBusinessId.current}"]`)
+              ? // Table on wide screens, stacked list on phones: take the one on screen.
+                (Array.from(document.querySelectorAll<HTMLElement>(`[data-edit-restaurant="${lastBusinessId.current}"]`)).find(
+                  (el) => el.offsetParent !== null,
+                ) ?? null)
               : null)
           if (target) {
             e.preventDefault()
@@ -239,14 +239,14 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
         }}
       >
         <DialogHeader>
-          <DialogTitle>{business ? business.business_name : "Edit restaurant"}</DialogTitle>
+          <DialogTitle>{business ? business.business_name : t.edit.fallbackTitle}</DialogTitle>
           <DialogDescription>
             {business ? (
               <>
-                Slug <span className="font-mono">{business.slug}</span> (can&apos;t be changed)
+                {t.edit.slugLabel} <span className="font-mono">{business.slug}</span> {t.edit.slugFixed}
               </>
             ) : (
-              "Update the restaurant's details and settings."
+              t.edit.fallbackDescription
             )}
           </DialogDescription>
         </DialogHeader>
@@ -262,22 +262,22 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
         )}
 
         <div className="space-y-5">
-          <Section id="details" title="Restaurant details">
+          <Section id="details" title={t.edit.details}>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Restaurant name">
+              <Field label={t.edit.name}>
                 {(p) => <Input {...p} value={form.business_name ?? ""} onChange={(e) => set("business_name", e.target.value)} />}
               </Field>
-              <Field label="Abbreviation">
+              <Field label={t.edit.abbreviation}>
                 {(p) => <Input {...p} value={form.name_abbreviation ?? ""} onChange={(e) => set("name_abbreviation", e.target.value)} />}
               </Field>
-              <Field label="Tax ID">{(p) => <Input {...p} value={form.tax_id ?? ""} onChange={(e) => set("tax_id", e.target.value)} />}</Field>
-              <Field label="Phone">
+              <Field label={t.edit.taxId}>{(p) => <Input {...p} value={form.tax_id ?? ""} onChange={(e) => set("tax_id", e.target.value)} />}</Field>
+              <Field label={t.edit.phone}>
                 {(p) => <Input {...p} type="tel" value={form.phone ?? ""} onChange={(e) => set("phone", e.target.value)} />}
               </Field>
-              <Field label="Restaurant email">
+              <Field label={t.edit.email}>
                 {(p) => <Input {...p} type="email" value={form.email ?? ""} onChange={(e) => set("email", e.target.value)} />}
               </Field>
-              <Field label="Address">{(p) => <Input {...p} value={form.address ?? ""} onChange={(e) => set("address", e.target.value)} />}</Field>
+              <Field label={t.edit.address}>{(p) => <Input {...p} value={form.address ?? ""} onChange={(e) => set("address", e.target.value)} />}</Field>
             </div>
           </Section>
 
@@ -290,14 +290,14 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
 
           <Separator />
 
-          <Section id="branding" title="Branding" description="Names customers see on sign-in codes and emails.">
+          <Section id="branding" title={t.edit.branding} description={t.edit.brandingDescription}>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="SMS sender name" hint="3–11 letters, digits or spaces. Register it at OpenAPI.com first.">
+              <Field label={t.edit.smsSender} hint={t.edit.smsSenderHint}>
                 {(p) => (
                   <Input {...p} value={form.sms_sender_name ?? ""} maxLength={11} onChange={(e) => set("sms_sender_name", e.target.value)} />
                 )}
               </Field>
-              <Field label="Email display name">
+              <Field label={t.edit.emailName}>
                 {(p) => (
                   <Input {...p} value={form.email_from_name ?? ""} maxLength={80} onChange={(e) => set("email_from_name", e.target.value)} />
                 )}
@@ -307,9 +307,9 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
 
           <Separator />
 
-          <Section id="orders" title="Online orders">
+          <Section id="orders" title={t.edit.orders}>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Order email" hint="Receives every new order.">
+              <Field label={t.edit.orderEmail} hint={t.edit.orderEmailHint}>
                 {(p) => (
                   <Input
                     {...p}
@@ -320,7 +320,7 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
                 )}
               </Field>
               <fieldset className="grid gap-2 text-sm">
-                <legend className="mb-1.5 text-sm font-medium">Payment methods</legend>
+                <legend className="mb-1.5 text-sm font-medium">{t.edit.paymentMethods}</legend>
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -328,7 +328,7 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
                     checked={form.pay_card === "on"}
                     onChange={(e) => set("pay_card", e.target.checked ? "on" : "off")}
                   />
-                  Card <span className="text-muted-foreground">(needs a ready payout account)</span>
+                  {t.edit.card} <span className="text-muted-foreground">{t.edit.cardNote}</span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -337,25 +337,25 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
                     checked={form.pay_cash === "on"}
                     onChange={(e) => set("pay_cash", e.target.checked ? "on" : "off")}
                   />
-                  Cash on delivery
+                  {t.edit.cash}
                 </label>
-                <p className="text-xs text-muted-foreground">Keep at least one on.</p>
+                <p className="text-xs text-muted-foreground">{t.edit.keepOneOn}</p>
               </fieldset>
             </div>
             <div id={sectionId("payout")} tabIndex={-1} className="mt-4 scroll-mt-4 rounded-md border p-3 outline-none">
-              <div className="mb-2 text-sm font-medium">Payout account</div>
+              <div className="mb-2 text-sm font-medium">{t.edit.payout}</div>
               {business && (
                 <PayoutAccountCell businessId={business.business_id} businessName={business.business_name} account={business.payout_account ?? null} onCreated={onSaved} />
               )}
               <p className="mt-2 text-xs text-muted-foreground">
-                Stripe updates its status once the owner finishes onboarding. Reopen this dialog to see the latest.
+                {t.edit.payoutNote}
               </p>
             </div>
           </Section>
 
           <Separator />
 
-          <Section id="staff" title="Staff and owners">
+          <Section id="staff" title={t.edit.staff}>
             {business && <StaffRolesPanel businessId={business.business_id} businessName={business.business_name} onChanged={onSaved} />}
           </Section>
 
@@ -365,10 +365,10 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
 
           <Separator />
 
-          <Section id="configuration" title="Configuration">
+          <Section id="configuration" title={t.edit.configuration}>
             <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="Timezone">{(p) => <Input {...p} value={form.timezone ?? ""} onChange={(e) => set("timezone", e.target.value)} />}</Field>
-              <Field label="Currency">
+              <Field label={t.edit.timezone}>{(p) => <Input {...p} value={form.timezone ?? ""} onChange={(e) => set("timezone", e.target.value)} />}</Field>
+              <Field label={t.edit.currency}>
                 {(p) => (
                   <Select value={form.currency} onValueChange={(v) => set("currency", v)}>
                     <SelectTrigger id={p.id} className="w-full">
@@ -383,29 +383,28 @@ export function EditBusinessDialog({ business, focus, returnFocus, onOpenChange,
                   </Select>
                 )}
               </Field>
-              <Field label="Minimum order">
+              <Field label={t.edit.minimumOrder}>
                 {(p) => (
                   <Input {...p} type="number" step="0.01" min="0" value={form.minimum_charge ?? ""} onChange={(e) => set("minimum_charge", e.target.value)} />
                 )}
               </Field>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              Opening hours: <span className="text-foreground">{hasHours ? "set" : "not set yet"}</span>. The owner sets them in the
-              restaurant&apos;s admin panel.
+              {t.edit.hoursLabel} <span className="text-foreground">{hasHours ? t.edit.hoursSet : t.edit.hoursNotSet}</span>. {t.edit.hoursOwner}
             </p>
           </Section>
         </div>
 
         <DialogFooter className="sticky -bottom-6 -mb-6 border-t bg-background py-4">
           <p className="mr-auto hidden self-center text-xs text-muted-foreground sm:block">
-            Domains, staff, providers and payout save on their own.
+            {t.edit.savesOnOwn}
           </p>
           <Button variant="outline" onClick={() => void requestClose()} disabled={submitting}>
-            Cancel
+            {t.common.cancel}
           </Button>
           <Button onClick={() => void handleSave()} disabled={submitting}>
             {submitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-            {submitting ? "Saving…" : "Save changes"}
+            {submitting ? t.common.saving : t.edit.saveChanges}
           </Button>
         </DialogFooter>
         {dialog}

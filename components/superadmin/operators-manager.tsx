@@ -1,12 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { ConsoleShell, PageHead } from "./console-shell"
 import { useConfirm } from "./confirm-dialog"
+import { useI18n } from "@/lib/i18n/client"
+import { apiError } from "@/lib/i18n/api-error"
 
 interface Operator {
   user_id: string
@@ -19,6 +21,11 @@ interface Operator {
 // the last active operator.
 export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | null }) {
   const { confirm, dialog } = useConfirm()
+  const { t, fmt } = useI18n()
+  const tRef = useRef(t)
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
   const [operators, setOperators] = useState<Operator[]>([])
   const [me, setMe] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -33,7 +40,7 @@ export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | 
     if (res.ok) {
       setOperators(j.operators ?? [])
       setMe(j.me ?? null)
-    } else setError(j.error || "Could not load operators")
+    } else setError(j.error ? apiError(tRef.current, j.error, res.status) : tRef.current.operators.loadFailed)
     setLoading(false)
   }, [])
 
@@ -44,9 +51,9 @@ export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | 
   const toggle = async (op: Operator) => {
     if (op.is_active) {
       const ok = await confirm({
-        title: `Deactivate ${op.email ?? "this operator"}?`,
-        description: "They lose access to the console on their next page load or action, until an operator activates them again.",
-        confirmLabel: "Deactivate",
+        title: fmt(t.operators.deactivateTitle, { who: op.email ?? t.operators.thisOperator }),
+        description: t.operators.deactivateBody,
+        confirmLabel: t.operators.deactivate,
         destructive: true,
       })
       if (!ok) return
@@ -59,14 +66,14 @@ export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | 
       body: JSON.stringify({ user_id: op.user_id, is_active: !op.is_active }),
     })
     const j = await res.json().catch(() => ({}))
-    if (!res.ok) setError(j.error === "last_operator" ? "The last active operator can't be deactivated." : j.error || "Update failed")
+    if (!res.ok) setError(j.error ? apiError(t, j.error, res.status, { last_operator: t.operators.lastOperator }) : t.operators.updateFailed)
     await load()
     setBusy(null)
   }
 
   return (
     <ConsoleShell adminEmail={adminEmail} width="narrow">
-      <PageHead title="Operators" description="BirraOra staff who can use this console. The last active operator can't be deactivated." />
+      <PageHead title={t.operators.title} description={t.operators.description} />
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
@@ -75,14 +82,14 @@ export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            {loading ? "Operators" : `${operators.length} operator${operators.length === 1 ? "" : "s"}`}
+            {loading ? t.operators.title : t.operators.count(operators.length)}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center py-6 text-sm text-muted-foreground" role="status">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-              Loading operators…
+              {t.operators.loading}
             </div>
           ) : (
             <ul className="divide-y">
@@ -91,22 +98,22 @@ export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | 
                   <div>
                     <div className="font-medium">
                       {op.email ?? op.user_id}
-                      {op.user_id === me ? " (you)" : ""}
+                      {op.user_id === me ? t.operators.you : ""}
                     </div>
-                    <div className="text-xs text-muted-foreground">{op.is_active ? "Active" : "Inactive"}</div>
+                    <div className="text-xs text-muted-foreground">{op.is_active ? t.operators.active : t.operators.inactive}</div>
                   </div>
                   {op.user_id === me && op.is_active ? (
                     // Deactivating yourself would lock you out mid-session; another operator has to do it.
-                    <span className="text-xs text-muted-foreground">Ask another operator to deactivate you</span>
+                    <span className="text-xs text-muted-foreground">{t.operators.askAnother}</span>
                   ) : (
                     <Button
                       size="sm"
                       variant="outline"
                       disabled={busy === op.user_id}
-                      aria-label={`${op.is_active ? "Deactivate" : "Activate"} ${op.email ?? "operator"}`}
+                      aria-label={`${op.is_active ? t.operators.deactivate : t.operators.activate} ${op.email ?? t.operators.thisOperator}`}
                       onClick={() => void toggle(op)}
                     >
-                      {op.is_active ? "Deactivate" : "Activate"}
+                      {op.is_active ? t.operators.deactivate : t.operators.activate}
                     </Button>
                   )}
                 </li>

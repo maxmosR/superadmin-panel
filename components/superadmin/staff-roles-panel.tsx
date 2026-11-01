@@ -1,11 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useId, useState } from "react"
+import { useCallback, useEffect, useId, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Plus, Trash2 } from "lucide-react"
 import { useConfirm } from "./confirm-dialog"
+import { useI18n } from "@/lib/i18n/client"
+import { apiError } from "@/lib/i18n/api-error"
 
 // "Staff and owners" of one restaurant (operator). Every change goes through
 // /api/businesses/roles -> set_role_assignment; the last-owner refusal is
@@ -13,12 +15,6 @@ import { useConfirm } from "./confirm-dialog"
 
 const ROLES = ["owner", "sala_boss", "worker", "accountant"] as const
 type Role = (typeof ROLES)[number]
-const ROLE_LABEL: Record<Role, string> = {
-  owner: "Owner",
-  sala_boss: "Floor manager",
-  worker: "Worker",
-  accountant: "Accountant",
-}
 
 interface Member {
   user_id: string
@@ -31,10 +27,6 @@ interface Member {
 
 const selectClass = "h-9 rounded-md border border-input bg-background px-2 text-sm"
 
-/** "Mario Rossi", else the masked contact, else a neutral fallback. */
-function who(m: Member) {
-  return [m.first_name, m.last_name].filter(Boolean).join(" ") || m.phone || m.email || "this person"
-}
 
 export function StaffRolesPanel({
   businessId,
@@ -46,9 +38,13 @@ export function StaffRolesPanel({
   onChanged?: () => void
 }) {
   const { confirm, dialog } = useConfirm()
+  const { t, fmt } = useI18n()
+  const ROLE_LABEL = t.staff.roles
+  /** "Mario Rossi", else the masked contact, else a neutral fallback. */
+  const who = (m: Member) => [m.first_name, m.last_name].filter(Boolean).join(" ") || m.phone || m.email || t.staff.thisPerson
   const addId = useId()
   const [status, setStatus] = useState("")
-  const where = businessName ?? "this restaurant"
+  const where = businessName ?? t.staff.thisRestaurant
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -56,12 +52,18 @@ export function StaffRolesPanel({
   const [identifier, setIdentifier] = useState("")
   const [role, setRole] = useState<Role>("owner")
 
+  // Latest strings for the loader, so switching language doesn't refetch.
+  const tRef = useRef(t)
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
+
   const load = useCallback(async () => {
     setLoading(true)
     const res = await fetch(`/api/businesses/roles?business_id=${encodeURIComponent(businessId)}`, { cache: "no-store" })
     const j = await res.json().catch(() => ({}))
     if (res.ok) setMembers(j.members ?? [])
-    else setError(j.error || "Could not load staff")
+    else setError(j.error ? apiError(tRef.current, j.error, res.status) : tRef.current.staff.loadFailed)
     setLoading(false)
   }, [businessId])
 
@@ -82,17 +84,15 @@ export function StaffRolesPanel({
       const j = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(
-          j.error === "last_owner"
-            ? "A restaurant must keep at least one owner."
-            : j.error === "invalid_identifier"
-              ? "Enter a valid phone number or email."
-              : j.error || "The change could not be saved.",
+          j.error
+            ? apiError(t, j.error, res.status, { last_owner: t.staff.lastOwner, invalid_identifier: t.staff.invalidIdentifier })
+            : t.staff.saveFailed,
         )
         return false
       }
       await load()
       onChanged?.()
-      setStatus(method === "DELETE" ? "Removed." : method === "POST" ? "Added." : "Role changed.")
+      setStatus(method === "DELETE" ? t.staff.removed : method === "POST" ? t.staff.added : t.staff.roleChanged)
       return true
     } finally {
       setSaving(false)
@@ -109,21 +109,21 @@ export function StaffRolesPanel({
       {loading ? (
         <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground" role="status">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          Loading staff…
+          {t.staff.loading}
         </div>
       ) : members.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No staff yet.</p>
+        <p className="text-sm text-muted-foreground">{t.staff.empty}</p>
       ) : (
         <ul className="divide-y rounded-md border">
           {members.map((m) => (
             <li key={m.user_id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
               <div className="min-w-0">
-                <div className="font-medium">{[m.first_name, m.last_name].filter(Boolean).join(" ") || "No name yet"}</div>
+                <div className="font-medium">{[m.first_name, m.last_name].filter(Boolean).join(" ") || t.staff.noName}</div>
                 <div className="text-xs text-muted-foreground font-mono">{m.phone ?? m.email ?? "—"}</div>
               </div>
               <div className="flex items-center gap-2">
                 <select
-                  aria-label={`Role of ${who(m)}`}
+                  aria-label={fmt(t.staff.roleOf, { who: who(m) })}
                   className={selectClass}
                   value={m.role}
                   disabled={saving}
@@ -132,12 +132,12 @@ export function StaffRolesPanel({
                     // Owner changes decide who runs the restaurant: confirm them.
                     if (m.role === "owner" || next === "owner") {
                       const ok = await confirm({
-                        title: next === "owner" ? `Make ${who(m)} an owner of ${where}?` : `Change ${who(m)} from owner to ${ROLE_LABEL[next].toLowerCase()}?`,
-                        description:
+                        title:
                           next === "owner"
-                            ? "Owners can manage staff, payouts and every setting in the restaurant's admin panel."
-                            : "They lose owner rights in the restaurant's admin panel straight away. A restaurant must keep at least one owner.",
-                        confirmLabel: "Change role",
+                            ? fmt(t.staff.makeOwnerTitle, { who: who(m), where })
+                            : fmt(t.staff.dropOwnerTitle, { who: who(m), role: ROLE_LABEL[next].toLowerCase() }),
+                        description: next === "owner" ? t.staff.makeOwnerBody : t.staff.dropOwnerBody,
+                        confirmLabel: t.staff.changeRole,
                       })
                       if (!ok) return
                     }
@@ -154,14 +154,14 @@ export function StaffRolesPanel({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  aria-label={`Remove ${who(m)}`}
-                  title="Remove"
+                  aria-label={fmt(t.staff.removeLabel, { who: who(m) })}
+                  title={t.common.remove}
                   disabled={saving}
                   onClick={async () => {
                     const ok = await confirm({
-                      title: `Remove ${who(m)} from ${where}?`,
-                      description: `They lose access to the restaurant's admin panel straight away. You can add them again later as ${ROLE_LABEL[m.role].toLowerCase()} or another role.`,
-                      confirmLabel: "Remove",
+                      title: fmt(t.staff.removeTitle, { who: who(m), where }),
+                      description: fmt(t.staff.removeBody, { role: ROLE_LABEL[m.role].toLowerCase() }),
+                      confirmLabel: t.common.remove,
                       destructive: true,
                     })
                     if (ok) void send("DELETE", { user_id: m.user_id })
@@ -176,16 +176,16 @@ export function StaffRolesPanel({
       )}
       <div className="flex flex-col gap-2 sm:flex-row">
         <label htmlFor={addId} className="sr-only">
-          Phone or email of the person to add
+          {t.staff.addLabel}
         </label>
         <Input
           id={addId}
-          placeholder="Phone or email"
+          placeholder={t.staff.addPlaceholder}
           value={identifier}
           onChange={(e) => setIdentifier(e.target.value)}
           disabled={saving}
         />
-        <select aria-label="Role for the new person" className={selectClass} value={role} onChange={(e) => setRole(e.target.value as Role)} disabled={saving}>
+        <select aria-label={t.staff.newRole} className={selectClass} value={role} onChange={(e) => setRole(e.target.value as Role)} disabled={saving}>
           {ROLES.map((r) => (
             <option key={r} value={r}>
               {ROLE_LABEL[r]}
@@ -194,13 +194,14 @@ export function StaffRolesPanel({
         </select>
         <Button
           type="button"
+          variant="outline"
           disabled={saving || !identifier.trim()}
           onClick={async () => {
             const v = identifier.trim()
             if (await send("POST", { identifier: v, kind: v.includes("@") ? "email" : "phone", role })) setIdentifier("")
           }}
         >
-          <Plus className="h-4 w-4" aria-hidden /> Add
+          <Plus className="h-4 w-4" aria-hidden /> {t.common.add}
         </Button>
       </div>
       <p className="sr-only" role="status" aria-live="polite">

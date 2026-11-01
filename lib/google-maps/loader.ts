@@ -18,6 +18,8 @@ declare global {
 type GoogleNamespace = typeof google
 
 export const MAPS_DOMAIN_ERROR = "Google Maps key does not allow this domain. Add it to the key's HTTP referrers."
+/** The script itself didn't arrive (offline, blocked, Google down). */
+export const MAPS_LOAD_FAILED = "Google Maps couldn't load. Check the connection, then reload the map."
 export const MAPS_KEY_MISSING = "Google Maps is not configured: set NEXT_PUBLIC_GOOGLE_MAPS_KEY for this console."
 
 let loaderPromise: Promise<GoogleNamespace> | null = null
@@ -29,6 +31,14 @@ export function onMapsAuthFailure(cb: () => void): () => void {
   if (authFailed) cb()
   authListeners.add(cb)
   return () => authListeners.delete(cb)
+}
+
+const loadedListeners = new Set<() => void>()
+
+/** Called once a later load succeeds (e.g. the map's "Reload map" after a failure). Returns an unsubscribe. */
+export function onMapsLoaded(cb: () => void): () => void {
+  loadedListeners.add(cb)
+  return () => loadedListeners.delete(cb)
 }
 
 export function mapId(): string {
@@ -53,7 +63,10 @@ export function loadGoogleMaps(): Promise<GoogleNamespace> {
 
   loaderPromise = new Promise<GoogleNamespace>((resolve, reject) => {
     window.__gmInit = () => {
-      if (window.google?.maps) resolve(window.google as GoogleNamespace)
+      if (window.google?.maps) {
+        resolve(window.google as GoogleNamespace)
+        for (const cb of loadedListeners) cb()
+      }
       else reject(new Error(MAPS_DOMAIN_ERROR))
     }
     const script = document.createElement("script")
@@ -68,7 +81,9 @@ export function loadGoogleMaps(): Promise<GoogleNamespace> {
     script.defer = true
     script.onerror = () => {
       loaderPromise = null
-      reject(new Error(MAPS_DOMAIN_ERROR))
+      // Let a retry add a fresh script tag.
+      script.remove()
+      reject(new Error(MAPS_LOAD_FAILED))
     }
     document.head.appendChild(script)
   })

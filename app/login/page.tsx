@@ -12,8 +12,10 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, ShieldCheck } from "lucide-react"
+import { LanguageSwitch, useI18n } from "@/lib/i18n/client"
 
 export default function SuperAdminLoginPage() {
+  const { t } = useI18n()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -33,7 +35,7 @@ export default function SuperAdminLoginPage() {
         return
       }
       if (!data.user) {
-        setError("Sign in failed")
+        setError(t.login.failed)
         return
       }
 
@@ -44,32 +46,31 @@ export default function SuperAdminLoginPage() {
       const check = operatorCheckFromStatus(res.status)
       if (check !== "operator") {
         await supabase.auth.signOut()
-        setError(
-          check === "not_operator"
-            ? "This account is not a super admin."
-            : "Could not verify operator access, try again",
-        )
+        setError(check === "not_operator" ? t.login.notOperator : t.login.couldNotVerify)
         return
       }
 
       router.push("/")
       router.refresh()
     } catch {
-      setError("An unexpected error occurred")
+      setError(t.login.unexpected)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 sm:p-6">
+    <div className="relative min-h-screen flex items-center justify-center bg-background p-4 sm:p-6">
+      <LanguageSwitch className="absolute top-4 right-4" />
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-2">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
             <ShieldCheck className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle className="text-xl sm:text-2xl font-bold">Operator console</CardTitle>
-          <CardDescription className="text-sm">BirraOra staff only</CardDescription>
+          <CardTitle className="text-xl sm:text-2xl font-bold">
+            <h1>{t.login.title}</h1>
+          </CardTitle>
+          <CardDescription className="text-sm">{t.login.subtitle}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -81,7 +82,7 @@ export default function SuperAdminLoginPage() {
 
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm">
-                Email
+                {t.login.email}
               </Label>
               <Input
                 id="email"
@@ -97,14 +98,14 @@ export default function SuperAdminLoginPage() {
 
             <div className="space-y-2">
               <Label htmlFor="password" className="text-sm">
-                Password
+                {t.login.password}
               </Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder={t.login.passwordPlaceholder}
                 required
                 disabled={loading}
                 className="text-base"
@@ -115,10 +116,10 @@ export default function SuperAdminLoginPage() {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
+                  {t.login.signingIn}
                 </>
               ) : (
-                "Sign In"
+                t.login.signIn
               )}
             </Button>
           </form>
