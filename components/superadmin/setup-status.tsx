@@ -35,9 +35,31 @@ function ProblemLine({ readiness }: { readiness: Readiness }) {
 }
 
 /** One line for the restaurants table: ready, or how far along and what's left. */
-export function SetupSummary({ readiness }: { readiness: Readiness }) {
+export function SetupSummary({ readiness, compact = false }: { readiness: Readiness; compact?: boolean }) {
   const { t, fmt } = useI18n()
   const open = readiness.steps.filter((s) => !s.done)
+
+  // Compact: status and meter only, for places where each step and problem
+  // is already shown next to its own section (the setup page menu).
+  if (compact)
+    return (
+      <div className="space-y-1.5">
+        <div className={cn("flex items-center gap-2 text-sm font-medium", readiness.ready && "text-green-700")}>
+          {readiness.ready ? (
+            <CheckCircle2 className="h-4 w-4" aria-hidden />
+          ) : (
+            <CircleAlert className="h-4 w-4 text-amber-700" aria-hidden />
+          )}
+          <span>
+            {readiness.ready ? t.setup.ready : t.setup.needsSetup}
+            {!readiness.ready && (
+              <span className="font-normal text-muted-foreground tabular-nums"> · {fmt(t.setup.progress, { done: readiness.done, total: readiness.total })}</span>
+            )}
+          </span>
+        </div>
+        {!readiness.ready && <SetupMeter readiness={readiness} />}
+      </div>
+    )
 
   if (readiness.ready) {
     return (
@@ -80,15 +102,18 @@ export function SetupChecklist({
   readiness,
   zonesHref,
   onJump,
+  bare = false,
 }: {
   readiness: Readiness
   zonesHref: string
   onJump: (section: SetupSection | "payout") => void
+  /** Inside another box (the setup page on phones): no frame, no heading row. */
+  bare?: boolean
 }) {
   const { t, fmt } = useI18n()
   return (
-    <section aria-labelledby="setup-heading" className="rounded-lg border bg-muted/40 p-4">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+    <section aria-labelledby={bare ? undefined : "setup-heading"} className={bare ? "" : "rounded-lg border bg-muted/40 p-4"}>
+      <div className={cn("mb-3 flex flex-wrap items-baseline justify-between gap-2", bare && "hidden")}>
         <h2 id="setup-heading" className="text-sm font-semibold">
           {readiness.ready ? t.setup.ready : t.setup.before}
         </h2>

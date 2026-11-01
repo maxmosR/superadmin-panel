@@ -1,10 +1,10 @@
 "use client"
 
 import type React from "react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowRight, CheckCircle2, Circle, CircleAlert, Copy, ExternalLink, Loader2, MapPinned, Zap } from "lucide-react"
+import { ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, Circle, CircleAlert, Copy, ExternalLink, Loader2, MapPinned, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -251,10 +251,11 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
         }
       />
 
+      <NextStepContext.Provider value={readiness.steps.find((s) => !s.done && s.blocking)?.key ?? null}>
       <div className="grid items-start gap-8 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <nav aria-label={t.edit.sectionsNav} className="sticky top-6 hidden lg:block">
           <div className="mb-4 border-b pb-4">
-            <SetupSummary readiness={readiness} />
+            <SetupSummary readiness={readiness} compact />
           </div>
           <ul className="space-y-0.5">
             {SECTIONS.map((id) => {
@@ -293,16 +294,15 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
         </nav>
 
         <div className="min-w-0 space-y-6">
+          {/* Phones and tablets: the full checklist folds into the same box (the side menu is hidden there). */}
           {readiness.ready ? (
-            <ReadyPanel row={row} rootDomain={rootDomain} />
+            <>
+              <ReadyPanel row={row} rootDomain={rootDomain} />
+              <PhoneChecklist readiness={readiness} zonesHref={zonesHref} onJump={jumpTo} framed />
+            </>
           ) : (
             <NextStep readiness={readiness} zonesHref={zonesHref} onJump={jumpTo} />
           )}
-
-          {/* Phones and tablets: the checklist stands in for the side menu. */}
-          <div className="lg:hidden">
-            <SetupChecklist readiness={readiness} zonesHref={zonesHref} onJump={(s) => jumpTo(s)} />
-          </div>
 
           <FieldSection
             id="details"
@@ -526,8 +526,38 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
           </Panel>
         </div>
       </div>
+      </NextStepContext.Provider>
       {dialog}
     </ConsoleShell>
+  )
+}
+
+/** The step the next-step strip names; its section header doesn't repeat it. */
+const NextStepContext = createContext<SetupStep["key"] | null>(null)
+
+/** The full checklist, folded, for screens without the side menu. */
+function PhoneChecklist({
+  readiness,
+  zonesHref,
+  onJump,
+  framed = false,
+}: {
+  readiness: Readiness
+  zonesHref: string
+  onJump: (id: SectionId) => void
+  framed?: boolean
+}) {
+  const { t, fmt } = useI18n()
+  return (
+    <details className={cn("group lg:hidden", framed ? "rounded-xl border bg-card px-5 py-3" : "w-full border-t pt-3")}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-sm text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+        {fmt(t.setup.allSteps, { done: readiness.done, total: readiness.total })}
+        <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden />
+      </summary>
+      <div className="pt-3">
+        <SetupChecklist readiness={readiness} zonesHref={zonesHref} onJump={(s) => onJump(s)} bare />
+      </div>
+    </details>
   )
 }
 
@@ -583,6 +613,7 @@ function NextStep({ readiness, zonesHref, onJump }: { readiness: Readiness; zone
           <ArrowRight className="h-4 w-4" aria-hidden />
         </Button>
       )}
+      <PhoneChecklist readiness={readiness} zonesHref={zonesHref} onJump={onJump} />
     </section>
   )
 }
@@ -662,24 +693,16 @@ function StateMark({ state, t }: { state: ReturnType<typeof sectionState>; t: Me
 /** The section's own setup steps, shown under its title when one is open. */
 function OpenSteps({ readiness, id }: { readiness: Readiness; id: SectionId }) {
   const { t } = useI18n()
-  const open = readiness.steps.filter((s) => STEPS_OF[id].includes(s.key) && !s.done)
-  const problems = readiness.problems.filter((p) => p.section === id)
-  if (!open.length && !problems.length) return null
+  const named = useContext(NextStepContext)
+  // Say each fact once: the step the strip names isn't repeated here, and
+  // stored problems are shown by the field itself (and the menu mark).
+  const open = readiness.steps.filter((s) => STEPS_OF[id].includes(s.key) && !s.done && s.key !== named)
+  if (!open.length) return null
   return (
-    <>
-      {open.length > 0 && (
-        <p className={cn("text-sm", open.some((s) => s.blocking) ? "text-amber-700" : "text-muted-foreground")}>
-          {open.map((s) => t.setup.steps[s.key]).join(", ")}
-          {open[0].hint ? ` · ${t.setup.hints[open[0].hint]}` : ""}
-        </p>
-      )}
-      {problems.map((p) => (
-        <p key={p.key} className="flex items-center gap-1.5 text-sm text-destructive">
-          <CircleAlert className="h-4 w-4 shrink-0" aria-hidden />
-          {t.setup.problems[p.key]}
-        </p>
-      ))}
-    </>
+    <p className={cn("text-sm", open.some((s) => s.blocking) ? "text-amber-700" : "text-muted-foreground")}>
+      {open.map((s) => t.setup.steps[s.key]).join(", ")}
+      {open[0].hint ? ` · ${t.setup.hints[open[0].hint]}` : ""}
+    </p>
   )
 }
 
