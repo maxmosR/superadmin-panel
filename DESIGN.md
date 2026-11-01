@@ -232,7 +232,8 @@ One shared header on every console page (`ConsoleShell`), on Panel with a bottom
 - **Sections:** Restaurants, Operators, Admin panel sections, Providers, as 44px-tall text tabs in Quiet Ink. The current page is Ink with a 2px Signal Blue underline and `aria-current="page"`. Below 768px the tabs take their own row and scroll sideways without a scrollbar.
 - **Right:** the signed-in email (from 1024px), the IT / EN switch, and an outline "Sign out".
 - Narrow pages (Operators) keep the full-width header and left-align their content under it.
-- The zones editor keeps its own full-screen header with a "← Restaurants" link.
+- The zones editor keeps its own full-screen header; its back link carries the restaurant's name ("← hosuto") and returns to its setup page.
+- **Tab titles:** every page names itself ("Fornitori · BirraOra"); a restaurant's pages name the restaurant ("hosuto · Configura · BirraOra", "hosuto · Zone di consegna · BirraOra"), read on the server after the operator check, so several open restaurants are easy to tell apart.
 
 ### Page head
 Page title (24px, 700) with a one-line Quiet Ink description, and the page's one primary button on the right (it wraps under the title on phones).
@@ -243,6 +244,8 @@ How the console shows whether a restaurant can take orders. The steps come from 
 - **Order and filters:** rows sort by how close they are to taking orders: one blocking step left ("Quasi pronti"), then more ("Bloccati"), then ready ("Pronti"). The segmented filter next to the search uses the same three groups plus "Tutti", each with its count.
 - **Payout cell:** one answer, not Stripe's two flags. "Carte attive" in quiet green text when Stripe has enabled both charges and payouts (with an amber "N requisiti da completare" line if Stripe wants more documents); otherwise an amber "In attesa di Stripe" chip with what is off.
 - **Data problems:** `getReadiness` also returns `problems` (an email address as the email display name, an SMS sender the provider would refuse). They don't stop orders, but they turn that section's menu mark into a red alert and show under its title.
+- **Next step:** until it is ready, the setup page opens with one strip under the title: "Prossimo passo: Mittente SMS" (the first blocking step in readiness order, or the first stored problem when no step is left), its hint, how many steps remain, and the page's one Signal Blue button, "Vai a Grafica e nomi →", which scrolls there and puts the cursor in the first empty field. Zones links to the editor; opening hours say the owner sets them and offer no button. All sections stay open below it.
+- **Menu marks:** a section can carry two marks: a red alert for a stored problem and the amber or grey circle for its open step. Screen readers hear "Grafica e nomi, da correggere, da fare".
 - **When ready:** the setup page opens with a green-tinted "Pronto a ricevere ordini" panel and the next two actions: open the ordering site, copy the owner's sign-in link.
 - **On the setup page (from 1024px):** the section menu carries it: a readiness summary on top, then each section with a green check, amber circle (blocking step open) or grey circle (non-blocking open). Each section's open steps also show under its title in amber.
 - **On the setup page (below 1024px):** a Well-tinted box at the top with a two-column list. Done steps get a green check and Quiet Ink text; open steps get an amber circle (grey if not blocking) and a "Set it below →" link that scrolls to that section and puts the cursor in its first empty field, "Open the zones editor →", or a note when the owner does it (opening hours).

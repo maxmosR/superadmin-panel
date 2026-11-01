@@ -365,7 +365,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" asChild>
               <Link href={`/businesses/${businessId}`}>
-                <ArrowLeft className="mr-1 h-4 w-4" aria-hidden /> {t.zones.back}
+                <ArrowLeft className="mr-1 h-4 w-4" aria-hidden /> {overview.business.business_name}
               </Link>
             </Button>
             <div>

@@ -10,8 +10,14 @@ import "./globals.css"
 export async function generateMetadata(): Promise<Metadata> {
   const lang = await getLang()
   return lang === "it"
-    ? { title: "Console operatori · BirraOra", description: "Configura ristoranti, titolari, domini e zone di consegna." }
-    : { title: "Operator console · BirraOra", description: "Set up restaurants, owners, domains and delivery zones." }
+    ? {
+        title: { default: "Console operatori · BirraOra", template: "%s · BirraOra" },
+        description: "Configura ristoranti, titolari, domini e zone di consegna.",
+      }
+    : {
+        title: { default: "Operator console · BirraOra", template: "%s · BirraOra" },
+        description: "Set up restaurants, owners, domains and delivery zones.",
+      }
 }
 
 export default async function RootLayout({

@@ -1,7 +1,7 @@
 // Domain manager (inside the edit dialog).
 export const en = {
   title: "Domains",
-  intro1: "Every request is mapped to this business by its host. Add a bare label (",
+  intro1: "Every request reaches this restaurant through its host. Add a bare label (",
   intro2: ") or a full hostname (",
   intro3: "). The primary domain is the one shown as the tenant's canonical address.",
   loading: "Loading domains…",

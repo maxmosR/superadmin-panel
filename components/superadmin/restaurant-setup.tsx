@@ -75,9 +75,8 @@ function sectionTitle(t: Messages, id: SectionId): string {
   }
 }
 
-/** problem: a stored value is wrong · done: every step done · todo: a blocking step open · later: only non-blocking steps open · none: no steps. */
-function sectionState(readiness: Readiness, id: SectionId): "problem" | "done" | "todo" | "later" | "none" {
-  if (readiness.problems.some((p) => p.section === id)) return "problem"
+/** done: every step done · todo: a blocking step open · later: only non-blocking steps open · none: no steps. */
+function sectionState(readiness: Readiness, id: SectionId): "done" | "todo" | "later" | "none" {
   const steps = readiness.steps.filter((s) => STEPS_OF[id].includes(s.key))
   if (!steps.length) return "none"
   if (steps.every((s) => s.done)) return "done"
@@ -281,7 +280,11 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-600" aria-label={t.edit.unsaved} title={t.edit.unsaved} />
                       )}
                     </span>
-                    <StateMark state={state} t={t} />
+                    {/* A wrong value and a missing step can share a section: show both. */}
+                    <span className="flex items-center gap-1">
+                      {readiness.problems.some((p) => p.section === id) && <ProblemMark t={t} />}
+                      <StateMark state={state} t={t} />
+                    </span>
                   </a>
                 </li>
               )
@@ -290,7 +293,11 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
         </nav>
 
         <div className="min-w-0 space-y-6">
-          {readiness.ready && <ReadyPanel row={row} rootDomain={rootDomain} />}
+          {readiness.ready ? (
+            <ReadyPanel row={row} rootDomain={rootDomain} />
+          ) : (
+            <NextStep readiness={readiness} zonesHref={zonesHref} onJump={jumpTo} />
+          )}
 
           {/* Phones and tablets: the checklist stands in for the side menu. */}
           <div className="lg:hidden">
@@ -524,6 +531,62 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
   )
 }
 
+/** Which section finishes each setup step. */
+const SECTION_OF: Record<SetupStep["key"], SectionId> = {
+  owner: "staff",
+  domain: "domains",
+  sms: "branding",
+  order_email: "orders",
+  payout: "payout",
+  zones: "zones",
+  hours: "configuration",
+}
+
+/**
+ * The one thing to do now: the first blocking step in readiness order, or,
+ * when none is left, the first stored problem. It names the step and takes
+ * the operator straight there (or says the owner does it).
+ */
+function NextStep({ readiness, zonesHref, onJump }: { readiness: Readiness; zonesHref: string; onJump: (id: SectionId) => void }) {
+  const { t, fmt } = useI18n()
+  const blocking = readiness.steps.filter((s) => !s.done && s.blocking)
+  const step = blocking[0]
+  const problem = step ? null : readiness.problems[0]
+  if (!step && !problem) return null
+
+  const section: SectionId = step ? SECTION_OF[step.key] : (problem!.section as SectionId)
+  const title = step ? t.setup.steps[step.key] : fmt(t.setup.nextFix, { problem: t.setup.problems[problem!.key] })
+  const hint = step?.hint ? t.setup.hints[step.hint] : null
+  const after = t.setup.nextAfter(Math.max(0, blocking.length - 1))
+
+  return (
+    <section aria-labelledby="next-step" className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card px-5 py-4">
+      <div className="min-w-0 space-y-0.5">
+        <h2 id="next-step" className="text-base">
+          <span className="text-muted-foreground">{t.setup.nextLabel}</span> <span className="font-semibold">{title}</span>
+        </h2>
+        {(hint || step?.key === "hours") && (
+          <p className="text-sm text-muted-foreground">{step?.key === "hours" ? t.setup.nextOwner : hint}</p>
+        )}
+        {after && <p className="text-xs text-muted-foreground">{after}</p>}
+      </div>
+      {step?.key === "hours" ? null : step?.key === "zones" ? (
+        <Button asChild>
+          <Link href={zonesHref}>
+            {t.setup.openZones}
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
+        </Button>
+      ) : (
+        <Button onClick={() => onJump(section)}>
+          {fmt(t.setup.nextGo, { section: sectionTitle(t, section) })}
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </Button>
+      )}
+    </section>
+  )
+}
+
 /**
  * The end of setup: say it plainly and hand over the next two things an
  * operator does (look at the live site, send the owner their sign-in link).
@@ -570,26 +633,28 @@ function ReadyPanel({ row, rootDomain }: { row: BusinessRow; rootDomain: string 
   )
 }
 
+function ProblemMark({ t }: { t: Messages }) {
+  return (
+    <>
+      <CircleAlert className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
+      <span className="sr-only">, {t.setup.toFixShort}</span>
+    </>
+  )
+}
+
 function StateMark({ state, t }: { state: ReturnType<typeof sectionState>; t: Messages }) {
   if (state === "none") return null
-  if (state === "problem")
-    return (
-      <>
-        <CircleAlert className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
-        <span className="sr-only">: {t.setup.toFixShort}</span>
-      </>
-    )
   if (state === "done")
     return (
       <>
         <CheckCircle2 className="h-4 w-4 shrink-0 text-green-700" aria-hidden />
-        <span className="sr-only">: {t.common.done}</span>
+        <span className="sr-only">, {t.common.done}</span>
       </>
     )
   return (
     <>
       <Circle className={cn("h-4 w-4 shrink-0", state === "todo" ? "text-amber-700" : "text-muted-foreground")} aria-hidden />
-      <span className="sr-only">: {t.common.notDone}</span>
+      <span className="sr-only">, {t.common.notDone}</span>
     </>
   )
 }
