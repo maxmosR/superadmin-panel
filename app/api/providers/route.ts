@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
-import { CALC_MODES, CODE_RE, RATE_FIELDS, parsePhone, parseRate, type CalcMode } from "@/lib/providers"
+import { CALC_MODES, CODE_RE, RATE_FIELDS, countUsingDefaults, parsePhone, parseRate, type CalcMode, type ProviderLink } from "@/lib/providers"
 
 export const dynamic = "force-dynamic"
 
@@ -68,13 +68,26 @@ export async function GET() {
   if (guard.response) return guard.response
 
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from("providers")
-    .select(COLUMNS)
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true })
+  const [{ data, error }, { data: bizRows, error: bizErr }, { data: links, error: linkErr }] = await Promise.all([
+    supabase.from("providers").select(COLUMNS).order("sort_order", { ascending: true }).order("name", { ascending: true }),
+    supabase.from("businesses").select("business_id").eq("deleted", false),
+    supabase
+      .from("business_providers")
+      .select("business_id, provider_id, is_enabled, fee_rate, iva_rate, stripe_fee_rate, stripe_fixed_fee, tax_rate"),
+  ])
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ providers: data ?? [] })
+  if (bizErr || linkErr) {
+    // The list still works without the counts; log codes only.
+    console.error(JSON.stringify({ event: "provider_usage_failed", code: (bizErr ?? linkErr)?.code ?? null }))
+  }
+
+  const live = new Set((bizRows ?? []).map((b: { business_id: string }) => b.business_id))
+  const counted = !bizErr && !linkErr
+  const providers = ((data ?? []) as unknown as Array<{ id: string; is_mandatory: boolean }>).map((p) => ({
+    ...p,
+    uses_defaults: counted ? countUsingDefaults(p, live, (links ?? []) as ProviderLink[]) : null,
+  }))
+  return NextResponse.json({ providers })
 }
 
 export async function POST(request: Request) {

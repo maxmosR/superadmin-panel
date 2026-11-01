@@ -330,6 +330,13 @@ export function ProvidersManager() {
             </div>
           </div>
 
+          {/* Editing defaults moves fees for every restaurant that inherits them: say how many. */}
+          {editing && typeof editing.uses_defaults === "number" && (
+            <p className="rounded-md border border-amber-600/30 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {t.providers.reach(editing.uses_defaults)}
+            </p>
+          )}
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
               {t.common.cancel}

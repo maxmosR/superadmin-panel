@@ -60,8 +60,13 @@ export const en = {
   locked: "IVA & tax locked",
   customize: "Customise",
   hideCustom: "Close",
-  usesDefault: "Uses the default: {v}",
   defaultIs: "Default: {v}",
+  reach: (n: number) =>
+    n === 0
+      ? "No restaurant uses these defaults right now."
+      : n === 1
+        ? "These defaults apply to 1 restaurant today. Restaurants with their own rates don't change."
+        : `These defaults apply to ${n} restaurants today. Restaurants with their own rates don't change.`,
   useDefault: "Use default",
   useDefaultLabel: "Use the default for {field}",
   customizeLabel: "Customise {name}",
@@ -129,8 +134,13 @@ export const it: typeof en = {
   locked: "IVA e tasse bloccate",
   customize: "Personalizza",
   hideCustom: "Chiudi",
-  usesDefault: "Usa il predefinito: {v}",
   defaultIs: "Predefinito: {v}",
+  reach: (n: number) =>
+    n === 0
+      ? "Nessun ristorante usa queste tariffe predefinite in questo momento."
+      : n === 1
+        ? "Queste tariffe predefinite valgono oggi per 1 ristorante. Chi ha tariffe proprie non cambia."
+        : `Queste tariffe predefinite valgono oggi per ${n} ristoranti. Chi ha tariffe proprie non cambia.`,
   useDefault: "Usa predefinito",
   useDefaultLabel: "Usa il predefinito per {field}",
   customizeLabel: "Personalizza {name}",

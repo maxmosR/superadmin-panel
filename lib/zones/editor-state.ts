@@ -139,3 +139,35 @@ export function parseImportJson(text: string): ImportResult {
   if (!check.ok) return { ok: false, error: `Invalid field: ${check.field}` }
   return { ok: true, payload: check.payload }
 }
+
+/** The published set as a payload, to compare with the draft. */
+export function payloadFromView(view: ZoneSetView): DraftPayload {
+  return {
+    origin: view.origin,
+    rings: view.rings.map((r) => ({ radius_m: r.radius_m, fee: r.fee, min_order: r.min_order ?? 0, label: r.label ?? null })),
+    cut_lines: view.cut_lines.map((c) => ({ id: c.id, label: c.label ?? null, points: c.points })),
+    rules: view.rules.map((u) => ({ id: u.id, anchor: u.anchor, mode: u.mode, fee: u.fee, label: u.label ?? null })),
+  }
+}
+
+/**
+ * True when two zone sets would price every address the same and look the
+ * same: same centre, rings, cut lines and piece settings. Ids, the order of
+ * lines and settings, and sub-millimetre coordinate noise don't count.
+ */
+export function zonesEqual(a: DraftPayload, b: DraftPayload): boolean {
+  const pt = (p: LatLng) => `${p.lat.toFixed(7)},${p.lng.toFixed(7)}`
+  const text = (s: string | null | undefined) => (s ?? "").trim()
+  const norm = (p: DraftPayload) =>
+    JSON.stringify({
+      origin: pt(p.origin),
+      rings: [...p.rings]
+        .sort((x, y) => x.radius_m - y.radius_m)
+        .map((r) => [r.radius_m, Math.round(r.fee * 100), Math.round((r.min_order ?? 0) * 100), text(r.label)]),
+      lines: p.cut_lines.map((c) => `${text(c.label)}|${c.points.map(pt).join(";")}`).sort(),
+      rules: p.rules
+        .map((u) => `${pt(u.anchor)}|${u.mode}|${u.fee === null ? "" : Math.round(u.fee * 100)}|${text(u.label)}`)
+        .sort(),
+    })
+  return norm(a) === norm(b)
+}

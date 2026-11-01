@@ -37,6 +37,41 @@ export interface Provider {
   default_stripe_fixed_fee: number
   default_tax_rate: number
   default_customer_service_number: string | null
+  /** Live restaurants whose fees would change with the defaults (null when not counted). */
+  uses_defaults?: number | null
+}
+
+/** A business_providers row, as read for the usage count. */
+export interface ProviderLink {
+  business_id: string
+  provider_id: string
+  is_enabled: boolean
+  fee_rate: number | null
+  iva_rate: number | null
+  stripe_fee_rate: number | null
+  stripe_fixed_fee: number | null
+  tax_rate: number | null
+}
+
+/**
+ * How many live restaurants a change to a provider's defaults reaches: the
+ * provider is on for them (a mandatory one always is, with or without a row)
+ * and at least one rate is empty, so it comes from the default.
+ */
+export function countUsingDefaults(
+  provider: { id: string; is_mandatory: boolean },
+  liveBusinessIds: Set<string>,
+  links: ProviderLink[],
+): number {
+  const mine = new Map(links.filter((l) => l.provider_id === provider.id && liveBusinessIds.has(l.business_id)).map((l) => [l.business_id, l]))
+  const inherits = (l: ProviderLink | undefined) => !l || RATE_FIELDS.some((f) => l[f] === null || l[f] === undefined)
+  let n = 0
+  if (provider.is_mandatory) {
+    for (const id of liveBusinessIds) if (inherits(mine.get(id))) n++
+  } else {
+    for (const l of mine.values()) if (l.is_enabled && inherits(l)) n++
+  }
+  return n
 }
 
 /** One row of business_provider_settings(business_id). */

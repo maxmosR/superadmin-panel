@@ -52,7 +52,8 @@ export function StaffRolesPanel({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [identifier, setIdentifier] = useState("")
-  const [role, setRole] = useState<Role>("owner")
+  // A new person starts as staff: owner is the most powerful role, chosen on purpose.
+  const [role, setRole] = useState<Role>("worker")
 
   // Latest strings for the loader, so switching language doesn't refetch.
   const tRef = useRef(t)

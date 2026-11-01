@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { parseEuro, parseKm, snapRadius } from "@/lib/zones/units"
 import { createAutosave, type AutosaveStatus, type SaveOutcome } from "@/lib/zones/autosave"
-import { buildPayload, exportJson, parseImportJson, ringErrors, sortRings, type EditorState } from "@/lib/zones/editor-state"
+import { buildPayload, exportJson, parseImportJson, ringErrors, sortRings, zonesEqual, type EditorState } from "@/lib/zones/editor-state"
 import { zoneBadges } from "@/lib/zones/badge"
 import { destination, distanceM, parseLatLngText } from "@/lib/zones/geo"
 import type { DraftPayload } from "@/lib/zones/types"
@@ -255,5 +255,34 @@ describe("geo previews", () => {
     expect(parseLatLngText("44.4056, 8.9463")).toEqual({ lat: 44.4056, lng: 8.9463 })
     expect(parseLatLngText("44.4056 8.9463")).toEqual({ lat: 44.4056, lng: 8.9463 })
     expect(parseLatLngText("200, 8")).toBeNull()
+  })
+})
+
+describe("zonesEqual", () => {
+  const base: DraftPayload = {
+    origin: { lat: 44.405564, lng: 8.965752 },
+    rings: [
+      { radius_m: 1000, fee: 2, min_order: 10, label: null },
+      { radius_m: 2000, fee: 3, min_order: 15, label: "centro" },
+    ],
+    cut_lines: [{ id: "l1", label: "Bisagno", points: [{ lat: 44.4, lng: 8.9 }, { lat: 44.41, lng: 8.95 }] }],
+    rules: [{ id: "r1", anchor: { lat: 44.402, lng: 8.96 }, mode: "excluded", fee: null, label: null }],
+  }
+
+  it("treats a copy with new ids and reordered lists as equal", () => {
+    const copy: DraftPayload = {
+      ...base,
+      rings: [...base.rings].reverse(),
+      cut_lines: base.cut_lines.map((c) => ({ ...c, id: "other" })),
+      rules: base.rules.map((u) => ({ ...u, id: null })),
+    }
+    expect(zonesEqual(base, copy)).toBe(true)
+  })
+
+  it("sees a changed fee, a moved centre, a new line or a changed setting", () => {
+    expect(zonesEqual(base, { ...base, rings: [{ ...base.rings[0], fee: 2.5 }, base.rings[1]] })).toBe(false)
+    expect(zonesEqual(base, { ...base, origin: { lat: 44.4056, lng: 8.965752 } })).toBe(false)
+    expect(zonesEqual(base, { ...base, cut_lines: [...base.cut_lines, { id: null, label: null, points: base.cut_lines[0].points }] })).toBe(false)
+    expect(zonesEqual(base, { ...base, rules: [{ ...base.rules[0], mode: "custom_fee", fee: 4 }] })).toBe(false)
   })
 })

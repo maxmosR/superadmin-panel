@@ -4,6 +4,7 @@
 // so the Draft / Live / Both map toggle stays usable; the final confirmation
 // is a dialog.
 
+import type React from "react"
 import { useMemo, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -46,6 +47,8 @@ export function PublishStep(props: {
   computed: Computed
   state: EditorState
   published: ZoneSetView | null
+  /** The draft has nothing the live version doesn't: nothing to publish. */
+  sameAsLive: boolean
   layers: MapLayers
   saving: boolean
   saveBlocked: string | null
@@ -73,7 +76,9 @@ export function PublishStep(props: {
   const l = summary(published?.pieces ?? null)
 
   const canPublish =
-    !props.readOnly && !props.saving && !props.saveBlocked && blockers.length === 0 && (warnings.length === 0 || ack) && !!computed.pieces
+    !props.sameAsLive &&
+    !props.readOnly &&
+    !props.saving && !props.saveBlocked && blockers.length === 0 && (warnings.length === 0 || ack) && !!computed.pieces
 
   const publish = async () => {
     setBusy(true)
@@ -165,31 +170,27 @@ export function PublishStep(props: {
               const dr = draftRings[i]
               const lr = published?.rings[i]
               const diff = !dr || !lr || dr.radius_m !== lr.radius_m || dr.fee !== lr.fee || (dr.min_order ?? 0) !== (lr.min_order ?? 0)
-              const ring = (r: { radius_m: number; fee: number; min_order?: number }) =>
-                `${formatKm(r.radius_m)} km · ${formatEuro(r.fee)}${r.min_order ? ` · ${fmt(t.zones.quote.min, { v: formatEuro(r.min_order) })}` : ""}`
+              // Distance and fee on one line, the minimum order under it: no mid-phrase wraps.
+              const ring = (r: { radius_m: number; fee: number; min_order?: number }) => (
+                <>
+                  <span className="whitespace-nowrap">
+                    {formatKm(r.radius_m)} km · {formatEuro(r.fee)}
+                  </span>
+                  {r.min_order ? <span className="block whitespace-nowrap">{fmt(t.zones.quote.min, { v: formatEuro(r.min_order) })}</span> : null}
+                </>
+              )
               return (
-                <tr key={i} className={diff ? "font-medium" : ""}>
-                  <td>{i + 1}</td>
-                  <td>{dr ? ring(dr) : "—"}</td>
-                  <td>{lr ? ring(lr) : "—"}</td>
-                </tr>
+                <CompareRow key={i} changed={!!published && diff} label={String(i + 1)} draft={dr ? ring(dr) : "—"} live={lr ? ring(lr) : "—"} />
               )
             })}
-            <tr>
-              <td>{t.zones.rowPieces}</td>
-              <td>{d.count}</td>
-              <td>{published ? l.count : "—"}</td>
-            </tr>
-            <tr>
-              <td>{t.zones.rowNotDelivered}</td>
-              <td>{formatNumber(d.excludedKm2, 2)} km²</td>
-              <td>{published ? `${formatNumber(l.excludedKm2, 2)} km²` : "—"}</td>
-            </tr>
-            <tr>
-              <td>{t.zones.rowCustom}</td>
-              <td>{d.custom}</td>
-              <td>{published ? l.custom : "—"}</td>
-            </tr>
+            <CompareRow changed={!!published && d.count !== l.count} label={t.zones.rowPieces} draft={String(d.count)} live={published ? String(l.count) : "—"} />
+            <CompareRow
+              changed={!!published && Math.abs(d.excludedKm2 - l.excludedKm2) >= 0.005}
+              label={t.zones.rowNotDelivered}
+              draft={`${formatNumber(d.excludedKm2, 2)} km²`}
+              live={published ? `${formatNumber(l.excludedKm2, 2)} km²` : "—"}
+            />
+            <CompareRow changed={!!published && d.custom !== l.custom} label={t.zones.rowCustom} draft={String(d.custom)} live={published ? String(l.custom) : "—"} />
           </tbody>
         </table>
         <p className="text-xs text-muted-foreground">{t.zones.liveOutline}</p>
@@ -201,9 +202,18 @@ export function PublishStep(props: {
         </Alert>
       )}
 
-      <Button className="w-full" disabled={!canPublish} onClick={() => setConfirming(true)}>
-        {fmt(t.zones.publishVersion, { v: props.draftVersion })}
-      </Button>
+      {props.sameAsLive ? (
+        <div className="space-y-1 text-center">
+          <Button className="w-full" variant="outline" disabled>
+            {t.zones.noChanges}
+          </Button>
+          <p className="text-xs text-muted-foreground">{t.zones.noChangesBody}</p>
+        </div>
+      ) : (
+        <Button className="w-full" disabled={!canPublish} onClick={() => setConfirming(true)}>
+          {fmt(t.zones.publishVersion, { v: props.draftVersion })}
+        </Button>
+      )}
 
       <Dialog open={confirming} onOpenChange={(o) => !busy && setConfirming(o)}>
         <DialogContent>
@@ -223,6 +233,21 @@ export function PublishStep(props: {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+/** One line of the draft-vs-live table. Changed lines get an amber fill and say so; the rest step back. */
+function CompareRow({ changed, label, draft, live }: { changed: boolean; label: string; draft: React.ReactNode; live: React.ReactNode }) {
+  const { t } = useI18n()
+  return (
+    <tr className={changed ? "bg-amber-50 font-medium text-foreground" : "text-muted-foreground"}>
+      <td className="py-0.5 pl-1 align-top">
+        {label}
+        {changed && <span className="sr-only"> ({t.zones.changedRow})</span>}
+      </td>
+      <td className="py-0.5 align-top">{draft}</td>
+      <td className="py-0.5 pr-1 align-top">{live}</td>
+    </tr>
   )
 }
 

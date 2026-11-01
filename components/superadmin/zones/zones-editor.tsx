@@ -16,8 +16,10 @@ import {
   EMPTY_STATE,
   exportJson,
   parseImportJson,
+  payloadFromView,
   stateFromPayload,
   stateFromView,
+  zonesEqual,
   type EditorState,
 } from "@/lib/zones/editor-state"
 import { distanceM } from "@/lib/zones/geo"
@@ -233,6 +235,13 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
   const outerM = ringsForMap.reduce((m, r) => Math.max(m, r.radiusM), 0)
   const published = overview?.published ?? null
   const hasPublished = !!published
+  // Compare content, not save times: a draft edited and then put back is
+  // still the live version, and publishing it would only add an empty version.
+  const sameAsLive = useMemo(() => {
+    if (!published) return false
+    const built = buildPayload(state)
+    return built.ok && zonesEqual(built.payload, payloadFromView(published))
+  }, [state, published])
 
   // ---- map callbacks ----------------------------------------------------------------
   const moveOrigin = useCallback(
@@ -363,7 +372,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
               <h1 className="font-semibold">{fmt(t.zones.title, { name: overview.business.business_name })}</h1>
               <div className="text-xs text-muted-foreground">
                 {hasPublished ? fmt(t.zones.liveVersion, { v: published?.version ?? "" }) : t.zones.nothingPublished} ·{" "}
-                {fmt(t.zones.draftVersion, { v: draftVersion })}
+                {sameAsLive ? t.zones.draftSame : fmt(t.zones.draftVersion, { v: draftVersion })}
               </div>
             </div>
           </div>
@@ -524,6 +533,7 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
                   computed={computed}
                   state={state}
                   published={published}
+                  sameAsLive={sameAsLive}
                   layers={layers}
                   saving={saveStatus === "pending" || saveStatus === "saving"}
                   saveBlocked={saveBlocked ? libText(t, saveBlocked) : null}

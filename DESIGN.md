@@ -254,6 +254,7 @@ How the console shows whether a restaurant can take orders. The steps come from 
 - **One save model: each section saves on its own.** Field sections (details, branding, orders, configuration, providers) have their own Save; Enter in a field saves that section. Their save bar appears only once the section differs from what the server holds: amber "Modifiche non salvate", a ghost "Annulla" that restores the section, and the Signal Blue Save. After saving it reads "Salvato" in green. List sections (domains, staff, payout account) act at once and carry a fixed outline chip with a Zap icon, "Si salva subito", in their header; no sentence explains the rule, the headers do.
 - **Leaving:** a section with unsaved changes gets an amber dot in the menu; following any in-app link asks "Uscire senza salvare?" naming the sections, and the browser asks on reload or close.
 - **Stored problems show on arrival:** a value that fails the section's check (an email address in "Nome mittente email", an invalid SMS sender) is flagged when the page opens, not only on Save.
+- **Defaults that move money:** a new person's role starts at "Addetto", never "Titolare". The /providers edit dialog says how many restaurants its defaults reach today, in an amber note above the buttons. Each provider fee field shows its default as fixed text with its unit ("Predefinito: 0,10 €", "Predefinito: 1,4%").
 - **Providers:** one line per provider (on/off, "tariffe predefinite" or "2 tariffe proprie", lock state) with a ghost "Personalizza" that opens its fee fields; one "Salva fornitori" covers every provider changed. The platform's provider list itself lives on its own page, `/providers`.
 
 ### Confirmation dialog
@@ -275,6 +276,8 @@ A 12px line next to the step controls in the zones editor: spinner + "Saving…"
 
 ### Zone step panel (signature)
 A row of step tabs (Center, Rings, Cut, Pieces, Test, Publish, History) with red count badges for blockers, above a scrolling panel. Ring rows read as a sentence ("up to [km] km → € [fee]") with the ring's map colour as a 12px dot.
+- **Nothing to publish:** the editor compares the draft's content with the live version (`zonesEqual`: centre, rings, cut lines, piece settings; ids and order don't count). When they match, the header reads "Bozza: uguale all'online" and the publish button becomes a disabled outline "Nessuna modifica da pubblicare". A version is only ever published when something changed.
+- **Draft vs live table:** changed lines get an `amber-50` fill and weight 500 (and "modificato" for screen readers); unchanged lines step back to Quiet Ink. Each ring cell keeps "1,0 km · 2,00 €" on one line and the minimum order under it.
 - **When the map fails:** the map area alone shows "The map stopped working" on Well with a MapPinOff icon, the reason in 12px Quiet Ink, and an outline "Reload map" that remounts only the map. The step panel and autosave keep working. Any other page crash lands on `app/error.tsx` with "Try again" and a way back to Restaurants.
 
 ### Language

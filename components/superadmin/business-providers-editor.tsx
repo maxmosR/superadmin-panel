@@ -11,7 +11,7 @@ import { RATE_FIELDS, type BusinessProviderSetting, type RateField } from "@/lib
 import { useI18n } from "@/lib/i18n/client"
 import { apiError } from "@/lib/i18n/api-error"
 import { cn } from "@/lib/utils"
-import { formatDecimal } from "@/lib/i18n/number"
+import { formatDecimal, formatMoney } from "@/lib/i18n/number"
 
 type Draft = Record<RateField | "customer_service_number", string> & { is_enabled: boolean; tax_locked: boolean }
 
@@ -182,7 +182,9 @@ export function BusinessProvidersEditor({ businessId, onDirty }: { businessId: s
                   <div className="grid gap-3 sm:grid-cols-3">
                     {RATE_FIELDS.map((f) => {
                       // The default stays visible as text, not as a placeholder that vanishes on typing.
-                      const def = formatDecimal(Number(p[`default_${f}`]))
+                      // Money for the fixed fee, a percentage for every other rate.
+                      const raw = Number(p[`default_${f}`])
+                      const def = f === "stripe_fixed_fee" ? formatMoney(raw) : `${formatDecimal(raw)}%`
                       const own = d[f].trim() !== ""
                       const hintId = `${panelId}-${f}-default`
                       return (
@@ -201,7 +203,7 @@ export function BusinessProvidersEditor({ businessId, onDirty }: { businessId: s
                             onChange={(e) => set(p.provider_id, { [f]: e.target.value } as Partial<Draft>)}
                           />
                           <p id={hintId} className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                            {own ? fmt(t.providers.defaultIs, { v: def }) : fmt(t.providers.usesDefault, { v: def })}
+                            {fmt(t.providers.defaultIs, { v: def })}
                             {own && (
                               <button
                                 type="button"
