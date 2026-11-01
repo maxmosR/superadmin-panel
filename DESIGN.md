@@ -251,7 +251,7 @@ How the console shows whether a restaurant can take orders. The steps come from 
 ### Restaurant setup page (signature)
 `/businesses/[id]` (`components/superadmin/restaurant-setup.tsx`): one restaurant's setup as a page with its own link and back button, not a dialog. Restaurant names and "Configura" in the list link to it; the zones editor's back link returns to it.
 - **Layout:** a 14rem sticky section menu on the left (Dati, Domini, Grafica e nomi, Ordini online, Conto incassi, Personale e titolari, Fornitori, Configurazione, Zone di consegna) that follows the section in view, next to one column of section panels (Panel on Floor, 12px radius, h2 titles).
-- **One save model: each section saves on its own.** Field sections (details, branding, orders, configuration) have their own Save; Enter in a field saves that section. Their save bar appears only once the section differs from what the server holds: amber "Modifiche non salvate", a ghost "Annulla" that restores the section, and the Signal Blue Save. After saving it reads "Salvato" in green. List sections (domains, staff, payout account) act at once and say so in their header ("Le modifiche si applicano subito"). A one-line sentence above the panels states this rule.
+- **One save model: each section saves on its own.** Field sections (details, branding, orders, configuration, providers) have their own Save; Enter in a field saves that section. Their save bar appears only once the section differs from what the server holds: amber "Modifiche non salvate", a ghost "Annulla" that restores the section, and the Signal Blue Save. After saving it reads "Salvato" in green. List sections (domains, staff, payout account) act at once and carry a fixed outline chip with a Zap icon, "Si salva subito", in their header; no sentence explains the rule, the headers do.
 - **Leaving:** a section with unsaved changes gets an amber dot in the menu; following any in-app link asks "Uscire senza salvare?" naming the sections, and the browser asks on reload or close.
 - **Stored problems show on arrival:** a value that fails the section's check (an email address in "Nome mittente email", an invalid SMS sender) is flagged when the page opens, not only on Save.
 - **Providers:** one line per provider (on/off, "tariffe predefinite" or "2 tariffe proprie", lock state) with a ghost "Personalizza" that opens its fee fields; one "Salva fornitori" covers every provider changed. The platform's provider list itself lives on its own page, `/providers`.
@@ -263,6 +263,12 @@ One pattern (`useConfirm`, `components/superadmin/confirm-dialog.tsx`) for every
 - **Buttons:** Cancel (outline) has focus when it opens, so Enter never confirms by accident; the confirm button is Alarm Red for removals, Signal Blue otherwise. Focus returns to the control that opened it.
 - Reversible, low-stakes changes (showing sections, activating an operator, non-owner role changes) don't ask.
 
+
+### Undo toast
+`useUndoToast().offer(message, undo)` (`components/superadmin/undo-toast.tsx`, mounted once in the root layout). After a change that applies at once and can be reversed from the console (a domain disabled or removed, a staff role changed, a section shown or hidden, "Nascondi tutte"), a dark bar at the bottom centre says what happened ("hosuto.localhost disattivato.") with an underlined "Annulla" for 8 seconds; a new change replaces it. Undo replays the opposite change and reports "Annullato." or that it couldn't. Changes the console can't reverse (removing a person: their contact is masked) keep their confirm and offer no undo. The live region is always mounted so each message is read out.
+
+### Numbers and money
+Every displayed number goes through `lib/i18n/number.ts` in the console's language: "2,00 €", "1,5 km", "7,59 km²", "1,4% + 0,10 €" in Italian; "€2.00", "1.5 km" in English. Input fields keep accepting both "3,50" and "3.50".
 
 ### Autosave status
 A 12px line next to the step controls in the zones editor: spinner + "Saving…" in Quiet Ink, "Saved" in Quiet Ink, "Not saved" in Alarm Red with an inline underlined "Retry", and a red conflict message when another window changed the draft. Reuse this pattern wherever the console saves without an explicit button.

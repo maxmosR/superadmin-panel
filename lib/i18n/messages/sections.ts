@@ -23,6 +23,10 @@ export const en = {
   hideTitle: "Hide every section for {name}?",
   hideBody: "All {n} sections leave its admin panel menu and their pages answer “not found” from the restaurant's next page load. Staff can't take or manage orders from the panel until you show them again.",
   hideConfirm: "Hide all sections",
+  hiddenMsg: "{section} hidden for {name}.",
+  shownMsg: "{section} shown for {name}.",
+  allHiddenMsg: "Every section hidden for {name}.",
+  allShownMsg: "Every section shown for {name}.",
   items: {
     orders: "Orders",
     products: "Products",
@@ -65,6 +69,10 @@ export const it: typeof en = {
   hideTitle: "Nascondere tutte le sezioni di {name}?",
   hideBody: "Tutte le {n} sezioni escono dal menu del pannello e le loro pagine rispondono “non trovato” dal prossimo caricamento di pagina. Il personale non può ricevere né gestire ordini dal pannello finché non le mostri di nuovo.",
   hideConfirm: "Nascondi tutte le sezioni",
+  hiddenMsg: "{section} nascosta per {name}.",
+  shownMsg: "{section} visibile per {name}.",
+  allHiddenMsg: "Tutte le sezioni nascoste per {name}.",
+  allShownMsg: "Tutte le sezioni visibili per {name}.",
   items: {
     orders: "Ordini",
     products: "Prodotti",

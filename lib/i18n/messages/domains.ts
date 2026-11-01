@@ -33,6 +33,9 @@ export const en = {
   addDomain: "Add domain",
   noteOptional: "Note (optional)",
   notePlaceholderAdd: "e.g. marketing site",
+  disabledMsg: "{host} disabled.",
+  enabledMsg: "{host} enabled.",
+  removedMsg: "{host} removed.",
 }
 
 export const it: typeof en = {
@@ -69,4 +72,7 @@ export const it: typeof en = {
   addDomain: "Aggiungi dominio",
   noteOptional: "Nota (facoltativa)",
   notePlaceholderAdd: "es. sito promozionale",
+  disabledMsg: "{host} disattivato.",
+  enabledMsg: "{host} riattivato.",
+  removedMsg: "{host} rimosso.",
 }

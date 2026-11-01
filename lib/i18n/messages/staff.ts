@@ -25,6 +25,7 @@ export const en = {
   addLabel: "Phone or email of the person to add",
   addPlaceholder: "Phone or email",
   newRole: "Role for the new person",
+  roleChangedMsg: "{who} is now {role}.",
 }
 
 export const it: typeof en = {
@@ -53,4 +54,5 @@ export const it: typeof en = {
   addLabel: "Telefono o email della persona da aggiungere",
   addPlaceholder: "Telefono o email",
   newRole: "Ruolo della nuova persona",
+  roleChangedMsg: "{who} ora è {role}.",
 }

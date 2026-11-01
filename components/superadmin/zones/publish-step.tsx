@@ -18,6 +18,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { buildPayload, type EditorState } from "@/lib/zones/editor-state"
 import { formatEuro, formatKm } from "@/lib/zones/units"
+import { formatNumber } from "@/lib/i18n/number"
 import type { ExtendedLine, IssueRef, PieceCollection, ZoneIssue, ZoneSetView } from "@/lib/zones/types"
 import type { MapLayers } from "./zone-map"
 import { useI18n } from "@/lib/i18n/client"
@@ -181,8 +182,8 @@ export function PublishStep(props: {
             </tr>
             <tr>
               <td>{t.zones.rowNotDelivered}</td>
-              <td>{d.excludedKm2.toFixed(2)} km²</td>
-              <td>{published ? `${l.excludedKm2.toFixed(2)} km²` : "—"}</td>
+              <td>{formatNumber(d.excludedKm2, 2)} km²</td>
+              <td>{published ? `${formatNumber(l.excludedKm2, 2)} km²` : "—"}</td>
             </tr>
             <tr>
               <td>{t.zones.rowCustom}</td>

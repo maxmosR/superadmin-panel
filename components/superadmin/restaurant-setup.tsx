@@ -4,7 +4,7 @@ import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowRight, CheckCircle2, Circle, CircleAlert, Copy, ExternalLink, Loader2, MapPinned } from "lucide-react"
+import { ArrowLeft, ArrowRight, CheckCircle2, Circle, CircleAlert, Copy, ExternalLink, Loader2, MapPinned, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -290,8 +290,6 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
         </nav>
 
         <div className="min-w-0 space-y-6">
-          <p className="text-sm text-muted-foreground">{t.edit.saveModel}</p>
-
           {readiness.ready && <ReadyPanel row={row} rootDomain={rootDomain} />}
 
           {/* Phones and tablets: the checklist stands in for the side menu. */}
@@ -339,7 +337,7 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
             )}
           </FieldSection>
 
-          <Panel id="domains" title={t.domains.title} readiness={readiness} note={t.edit.appliesAtOnce}>
+          <Panel id="domains" title={t.domains.title} readiness={readiness} instant>
             <DomainManager businessId={row.business_id} rootDomain={rootDomain} showTitle={false} onChanged={() => void load()} />
           </Panel>
 
@@ -439,7 +437,7 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
             )}
           </FieldSection>
 
-          <Panel id="payout" title={t.edit.payout} readiness={readiness} note={t.edit.payoutNote}>
+          <Panel id="payout" title={t.edit.payout} description={t.edit.payoutNote} readiness={readiness} instant>
             <PayoutAccountCell
               businessId={row.business_id}
               businessName={row.business_name}
@@ -448,7 +446,7 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
             />
           </Panel>
 
-          <Panel id="staff" title={t.edit.staff} readiness={readiness} note={t.edit.appliesAtOnce}>
+          <Panel id="staff" title={t.edit.staff} readiness={readiness} instant>
             <StaffRolesPanel businessId={row.business_id} businessName={row.business_name} onChanged={() => void load()} />
           </Panel>
 
@@ -620,11 +618,25 @@ function OpenSteps({ readiness, id }: { readiness: Readiness; id: SectionId }) {
   )
 }
 
+function InstantChip() {
+  const { t } = useI18n()
+  return (
+    <span
+      title={t.edit.appliesAtOnceHint}
+      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium text-muted-foreground"
+    >
+      <Zap className="h-3 w-3" aria-hidden />
+      {t.edit.appliesAtOnce}
+      <span className="sr-only">. {t.edit.appliesAtOnceHint}</span>
+    </span>
+  )
+}
+
 function Panel({
   id,
   title,
   description,
-  note,
+  instant,
   readiness,
   children,
   footer,
@@ -632,7 +644,8 @@ function Panel({
   id: SectionId
   title: string
   description?: string
-  note?: string
+  /** Changes here apply at once (with an undo toast); field sections have a save bar instead. */
+  instant?: boolean
   readiness: Readiness
   children: React.ReactNode
   footer?: React.ReactNode
@@ -645,7 +658,7 @@ function Panel({
           <h2 id={headingId} className="text-base font-semibold">
             {title}
           </h2>
-          {note && <span className="text-xs text-muted-foreground">{note}</span>}
+          {instant && <InstantChip />}
         </div>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
         <OpenSteps readiness={readiness} id={id} />

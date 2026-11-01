@@ -11,6 +11,7 @@ import { RATE_FIELDS, type BusinessProviderSetting, type RateField } from "@/lib
 import { useI18n } from "@/lib/i18n/client"
 import { apiError } from "@/lib/i18n/api-error"
 import { cn } from "@/lib/utils"
+import { formatDecimal } from "@/lib/i18n/number"
 
 type Draft = Record<RateField | "customer_service_number", string> & { is_enabled: boolean; tax_locked: boolean }
 
@@ -179,23 +180,43 @@ export function BusinessProvidersEditor({ businessId, onDirty }: { businessId: s
               {isOpen && (
                 <div id={panelId} className="mt-3 space-y-3 border-t pt-3">
                   <div className="grid gap-3 sm:grid-cols-3">
-                    {RATE_FIELDS.map((f) => (
-                      <div key={f} className="space-y-1">
-                        <Label htmlFor={`${panelId}-${f}`} className="text-xs">
-                          {t.providers.rates[f]}
-                        </Label>
-                        <Input
-                          id={`${panelId}-${f}`}
-                          type="number"
-                          step="0.01"
-                          min={0}
-                          value={d[f]}
-                          disabled={saving}
-                          placeholder={fmt(t.providers.defaultValue, { v: String(p[`default_${f}`]) })}
-                          onChange={(e) => set(p.provider_id, { [f]: e.target.value } as Partial<Draft>)}
-                        />
-                      </div>
-                    ))}
+                    {RATE_FIELDS.map((f) => {
+                      // The default stays visible as text, not as a placeholder that vanishes on typing.
+                      const def = formatDecimal(Number(p[`default_${f}`]))
+                      const own = d[f].trim() !== ""
+                      const hintId = `${panelId}-${f}-default`
+                      return (
+                        <div key={f} className="space-y-1">
+                          <Label htmlFor={`${panelId}-${f}`} className="text-xs">
+                            {t.providers.rates[f]}
+                          </Label>
+                          <Input
+                            id={`${panelId}-${f}`}
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            value={d[f]}
+                            disabled={saving}
+                            aria-describedby={hintId}
+                            onChange={(e) => set(p.provider_id, { [f]: e.target.value } as Partial<Draft>)}
+                          />
+                          <p id={hintId} className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                            {own ? fmt(t.providers.defaultIs, { v: def }) : fmt(t.providers.usesDefault, { v: def })}
+                            {own && (
+                              <button
+                                type="button"
+                                disabled={saving}
+                                aria-label={fmt(t.providers.useDefaultLabel, { field: t.providers.rates[f] })}
+                                className="rounded-sm font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                onClick={() => set(p.provider_id, { [f]: "" } as Partial<Draft>)}
+                              >
+                                {t.providers.useDefault}
+                              </button>
+                            )}
+                          </p>
+                        </div>
+                      )
+                    })}
                     <div className="space-y-1">
                       <Label htmlFor={`${panelId}-csn`} className="text-xs">
                         {t.providers.serviceNumber}

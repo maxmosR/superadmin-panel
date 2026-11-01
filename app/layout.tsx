@@ -4,6 +4,7 @@ import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import { I18nProvider } from "@/lib/i18n/client"
 import { getLang } from "@/lib/i18n/server"
+import { UndoToastProvider } from "@/components/superadmin/undo-toast"
 import "./globals.css"
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -23,7 +24,9 @@ export default async function RootLayout({
   return (
     <html lang={lang} className="light">
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-        <I18nProvider initial={lang}>{children}</I18nProvider>
+        <I18nProvider initial={lang}>
+          <UndoToastProvider>{children}</UndoToastProvider>
+        </I18nProvider>
       </body>
     </html>
   )

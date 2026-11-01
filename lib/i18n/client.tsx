@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import { useRouter } from "next/navigation"
 import { fmt, LANG_COOKIE, localeOf, type Lang } from "./core"
 import { messages, type Messages } from "./messages"
+import { setNumberLocale } from "./number"
 
 interface I18n {
   lang: Lang
@@ -22,6 +23,8 @@ const I18nContext = createContext<I18n | null>(null)
 export function I18nProvider({ initial, children }: { initial: Lang; children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(initial)
   const router = useRouter()
+  // Before children render, so every number they format uses this language.
+  setNumberLocale(localeOf(lang))
 
   const setLang = useCallback(
     (next: Lang) => {

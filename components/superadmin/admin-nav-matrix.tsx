@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { ConsoleShell, PageHead } from "./console-shell"
 import { useConfirm } from "./confirm-dialog"
+import { useUndoToast } from "./undo-toast"
 import { useI18n } from "@/lib/i18n/client"
 import { apiError } from "@/lib/i18n/api-error"
 
@@ -28,6 +29,7 @@ interface BusinessRow {
 // (PUT /api/admin-nav); the restaurant sees it on its next page load.
 export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | null }) {
   const { confirm, dialog } = useConfirm()
+  const { offer } = useUndoToast()
   const { t, fmt } = useI18n()
   const tRef = useRef(t)
   useEffect(() => {
@@ -59,7 +61,8 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
     }
   }, [])
 
-  const save = async (businessId: string, hidden: string[], previous: string[]) => {
+  /** True when the database took the change. */
+  const save = async (businessId: string, hidden: string[], previous: string[]): Promise<boolean> => {
     setSaving((s) => new Set(s).add(businessId))
     setError("")
     setRows((rs) => rs.map((r) => (r.business_id === businessId ? { ...r, hidden_items: hidden } : r)))
@@ -78,13 +81,19 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
       next.delete(businessId)
       return next
     })
+    return res.ok
   }
 
-  const toggle = (row: BusinessRow, key: string) => {
-    const hidden = row.hidden_items.includes(key)
-      ? row.hidden_items.filter((k) => k !== key)
-      : [...row.hidden_items, key]
-    void save(row.business_id, hidden, row.hidden_items)
+  const undoTo = (businessId: string, previous: string[], now: string[]) => async () => {
+    if (!(await save(businessId, previous, now))) throw new Error("undo failed")
+  }
+
+  const toggle = async (row: BusinessRow, key: string) => {
+    const wasHidden = row.hidden_items.includes(key)
+    const hidden = wasHidden ? row.hidden_items.filter((k) => k !== key) : [...row.hidden_items, key]
+    if (!(await save(row.business_id, hidden, row.hidden_items))) return
+    const section = t.sections.items[key] ?? items.find((i) => i.key === key)?.label ?? key
+    offer(fmt(wasHidden ? t.sections.shownMsg : t.sections.hiddenMsg, { section, name: row.business_name }), undoTo(row.business_id, row.hidden_items, hidden))
   }
 
   const setAll = async (row: BusinessRow, visible: boolean) => {
@@ -97,7 +106,9 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
       })
       if (!ok) return
     }
-    void save(row.business_id, visible ? [] : items.map((i) => i.key), row.hidden_items)
+    const next = visible ? [] : items.map((i) => i.key)
+    if (!(await save(row.business_id, next, row.hidden_items))) return
+    offer(fmt(visible ? t.sections.allShownMsg : t.sections.allHiddenMsg, { name: row.business_name }), undoTo(row.business_id, row.hidden_items, next))
   }
 
   const shown = useMemo(() => {
@@ -219,7 +230,7 @@ export function AdminNavMatrix({ adminEmail = null }: { adminEmail?: string | nu
                               className="h-4 w-4 cursor-pointer accent-neutral-500 disabled:cursor-wait"
                               checked={!row.hidden_items.includes(item.key)}
                               disabled={busy}
-                              onChange={() => toggle(row, item.key)}
+                              onChange={() => void toggle(row, item.key)}
                               aria-label={fmt(t.sections.cellLabel, { section: t.sections.items[item.key] ?? item.label, name: row.business_name })}
                             />
                             {hidden && <span className="mt-0.5 block text-xs font-medium leading-none text-amber-700">{t.sections.hidden}</span>}

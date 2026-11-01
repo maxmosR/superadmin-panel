@@ -25,6 +25,9 @@ export const en = {
   unauthenticated: "Your session has ended. Sign in again.",
   notOperator: "This account isn't an operator.",
   notFound: "Not found. It may have been removed; reload the page.",
+  undo: "Undo",
+  undone: "Undone.",
+  undoFailed: "Couldn't undo. Change it back by hand.",
 }
 
 export const it: typeof en = {
@@ -53,4 +56,7 @@ export const it: typeof en = {
   unauthenticated: "La sessione è scaduta. Accedi di nuovo.",
   notOperator: "Questo account non è un operatore.",
   notFound: "Non trovato. Potrebbe essere stato rimosso: ricarica la pagina.",
+  undo: "Annulla",
+  undone: "Annullato.",
+  undoFailed: "Impossibile annullare. Ripristina a mano.",
 }

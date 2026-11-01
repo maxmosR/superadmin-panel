@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Plus, Trash2 } from "lucide-react"
 import { useConfirm } from "./confirm-dialog"
+import { useUndoToast } from "./undo-toast"
 import { useI18n } from "@/lib/i18n/client"
 import { apiError } from "@/lib/i18n/api-error"
 
@@ -38,6 +39,7 @@ export function StaffRolesPanel({
   onChanged?: () => void
 }) {
   const { confirm, dialog } = useConfirm()
+  const { offer } = useUndoToast()
   const { t, fmt } = useI18n()
   const ROLE_LABEL = t.staff.roles
   /** "Mario Rossi", else the masked contact, else a neutral fallback. */
@@ -141,7 +143,12 @@ export function StaffRolesPanel({
                       })
                       if (!ok) return
                     }
-                    void send("PATCH", { user_id: m.user_id, role: next })
+                    const previous = m.role
+                    const ok = await send("PATCH", { user_id: m.user_id, role: next })
+                    if (ok)
+                      offer(fmt(t.staff.roleChangedMsg, { who: who(m), role: ROLE_LABEL[next].toLowerCase() }), async () => {
+                        if (!(await send("PATCH", { user_id: m.user_id, role: previous }))) throw new Error("undo failed")
+                      })
                   }}
                 >
                   {ROLES.map((r) => (

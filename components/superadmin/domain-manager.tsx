@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Check, Loader2, Pencil, Plus, Star, Trash2, X } from "lucide-react"
 import { domainDisplayHost, domainKind } from "@/lib/domains"
 import { useConfirm } from "./confirm-dialog"
+import { useUndoToast } from "./undo-toast"
 import { useI18n } from "@/lib/i18n/client"
 import { apiError } from "@/lib/i18n/api-error"
 
@@ -41,6 +42,7 @@ export function DomainManager({
   onChanged?: () => void
 }) {
   const { confirm, dialog } = useConfirm()
+  const { offer } = useUndoToast()
   const { t, fmt } = useI18n()
   // Latest strings for the loader, so switching language doesn't refetch.
   const tRef = useRef(t)
@@ -138,23 +140,31 @@ export function DomainManager({
   const toggleActive = async (row: DomainRow) => {
     const host = domainDisplayHost(row.domain, rootDomain)
     if (row.is_active) {
-      const ok = await confirm({
+      const confirmed = await confirm({
         title: fmt(t.domains.disableTitle, { host }),
         description: t.domains.disableBody,
         confirmLabel: t.domains.disable,
         destructive: true,
       })
-      if (!ok) return false
+      if (!confirmed) return false
     }
-    return call(`active:${row.domain}`, {
-      method: "PATCH",
-      body: JSON.stringify({ business_id: businessId, domain: row.domain, is_active: !row.is_active }),
-    })
+    const setActive = (active: boolean) =>
+      call(`active:${row.domain}`, {
+        method: "PATCH",
+        body: JSON.stringify({ business_id: businessId, domain: row.domain, is_active: active }),
+      })
+    const ok = await setActive(!row.is_active)
+    if (ok && row.is_active)
+      offer(fmt(t.domains.disabledMsg, { host }), async () => {
+        if (!(await setActive(true))) throw new Error("undo failed")
+      })
+    return ok
   }
 
-  const remove = async (domain: string) => {
+  const remove = async (row: DomainRow) => {
+    const { domain } = row
     const host = domainDisplayHost(domain, rootDomain)
-    const ok = await confirm({
+    const confirmed = await confirm({
       title: fmt(t.domains.removeTitle, { host }),
       description: (
         <>
@@ -165,11 +175,27 @@ export function DomainManager({
       confirmLabel: t.domains.removeConfirm,
       destructive: true,
     })
-    if (!ok) return false
-    return call(`del:${domain}`, {
+    if (!confirmed) return false
+    const ok = await call(`del:${domain}`, {
       method: "DELETE",
       url: `/api/businesses/domains?business_id=${encodeURIComponent(businessId)}&domain=${encodeURIComponent(domain)}`,
     })
+    // Undo adds it back as it was: same note, primary and active state.
+    if (ok)
+      offer(fmt(t.domains.removedMsg, { host }), async () => {
+        const added = await call("add", {
+          method: "POST",
+          body: JSON.stringify({ business_id: businessId, domain, label: row.label }),
+        })
+        if (!added) throw new Error("undo failed")
+        if (row.is_primary) await setPrimary(domain)
+        else if (!row.is_active)
+          await call(`active:${domain}`, {
+            method: "PATCH",
+            body: JSON.stringify({ business_id: businessId, domain, is_active: false }),
+          })
+      })
+    return ok
   }
 
   return (
@@ -296,7 +322,7 @@ export function DomainManager({
                         variant="ghost"
                         title={t.common.remove}
                         aria-label={fmt(t.domains.removeLabel, { host: domainDisplayHost(row.domain, rootDomain) })}
-                        onClick={() => void remove(row.domain)}
+                        onClick={() => void remove(row)}
                         disabled={!!busy || domains.length <= 1}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />

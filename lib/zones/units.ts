@@ -1,4 +1,6 @@
-// Parsing and formatting of the editor's km and € fields.
+// Parsing and formatting of the editor's km and € fields. Display formats
+// follow the console language; input fields keep a plain dot decimal.
+import { formatMoney, formatNumber } from "@/lib/i18n/number"
 
 /**
  * A distance typed in km ("1,5" or "1.5"), at most one decimal, 0.1–50 km.
@@ -37,9 +39,9 @@ export function minOrderInput(v: number): string {
   return v > 0 ? v.toFixed(2) : ""
 }
 
-/** 1500 -> "1.5" */
+/** 1500 -> "1,5" (it) / "1.5" (en) */
 export function formatKm(m: number): string {
-  return (Math.round(m / 100) / 10).toFixed(1)
+  return formatNumber(Math.round(m / 100) / 10, 1)
 }
 
 /** 3.5 -> "3.50" (for an input field) */
@@ -47,9 +49,9 @@ export function feeInput(fee: number): string {
   return fee.toFixed(2)
 }
 
-/** 3.5 -> "€3.50" */
+/** 3.5 -> "3,50 €" (it) / "€3.50" (en) */
 export function formatEuro(fee: number | null | undefined): string {
-  return fee === null || fee === undefined ? "—" : `€${fee.toFixed(2)}`
+  return fee === null || fee === undefined ? "—" : formatMoney(fee)
 }
 
 /** Snap a distance in metres to 0.1 km, within 0.1–50 km. */
@@ -59,11 +61,11 @@ export function snapRadius(m: number): number {
 
 /** Square metres -> "0.42 km²" or "830 m²". */
 export function formatArea(m2: number): string {
-  return m2 >= 100_000 ? `${(m2 / 1_000_000).toFixed(2)} km²` : `${Math.round(m2)} m²`
+  return m2 >= 100_000 ? `${formatNumber(m2 / 1_000_000, 2)} km²` : `${formatNumber(Math.round(m2), 0)} m²`
 }
 
 /** Metres -> "850 m" / "2.4 km" */
 export function formatDistance(m: number | null | undefined): string {
   if (m === null || m === undefined) return "—"
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`
+  return m < 1000 ? `${Math.round(m)} m` : `${formatNumber(m / 1000, 1)} km`
 }

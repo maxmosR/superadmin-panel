@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { cloneElement, useCallback, useEffect, useId, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Pencil, Plus } from "lucide-react"
 import { CALC_MODES, RATE_FIELDS, type CalcMode, type Provider } from "@/lib/providers"
 import { useI18n } from "@/lib/i18n/client"
+import { formatDecimal, formatMoney } from "@/lib/i18n/number"
 import { ConsoleShell, PageHead } from "./console-shell"
 import { apiError } from "@/lib/i18n/api-error"
 
@@ -145,11 +146,12 @@ export function ProvidersManager() {
 
   const fmtRates = (p: Provider) => {
     const parts: string[] = []
-    if (Number(p.default_fee_rate)) parts.push(fmt(t.providers.feeShort, { n: p.default_fee_rate }))
-    if (Number(p.default_iva_rate) && Number(p.default_fee_rate)) parts.push(fmt(t.providers.ivaShort, { n: p.default_iva_rate }))
+    if (Number(p.default_fee_rate)) parts.push(fmt(t.providers.feeShort, { n: formatDecimal(Number(p.default_fee_rate)) }))
+    if (Number(p.default_iva_rate) && Number(p.default_fee_rate))
+      parts.push(fmt(t.providers.ivaShort, { n: formatDecimal(Number(p.default_iva_rate)) }))
     if (Number(p.default_stripe_fee_rate) || Number(p.default_stripe_fixed_fee))
-      parts.push(`${p.default_stripe_fee_rate}% + €${Number(p.default_stripe_fixed_fee).toFixed(2)}`)
-    parts.push(fmt(t.providers.taxShort, { n: p.default_tax_rate }))
+      parts.push(`${formatDecimal(Number(p.default_stripe_fee_rate))}% + ${formatMoney(Number(p.default_stripe_fixed_fee))}`)
+    parts.push(fmt(t.providers.taxShort, { n: formatDecimal(Number(p.default_tax_rate)) }))
     return parts.join(" · ")
   }
 
@@ -257,9 +259,10 @@ export function ProvidersManager() {
                   placeholder="justeat"
                 />
               </Field>
-              <Field label={t.providers.invoiceMode}>
+              {/* Full row: the long mode descriptions don't fit half the dialog. */}
+              <Field label={t.providers.invoiceMode} id="provider-calc-mode" className="sm:col-span-2">
                 <Select value={form.calc_mode} onValueChange={(v) => setForm((f) => ({ ...f, calc_mode: v as CalcMode }))}>
-                  <SelectTrigger>
+                  <SelectTrigger id="provider-calc-mode" className="w-full min-w-0">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -274,15 +277,9 @@ export function ProvidersManager() {
               <Field label={t.providers.sortOrder}>
                 <Input type="number" value={form.sort_order} onChange={(e) => set("sort_order", e.target.value)} />
               </Field>
-              <div className="sm:col-span-2">
-                <Field label={t.providers.iconUrl}>
-                  <Input
-                    value={form.icon_url}
-                    onChange={(e) => set("icon_url", e.target.value)}
-                    placeholder="https://… or /icons/name.png"
-                  />
-                </Field>
-              </div>
+              <Field label={t.providers.iconUrl}>
+                <Input value={form.icon_url} onChange={(e) => set("icon_url", e.target.value)} placeholder="https://… / /icons/name.png" />
+              </Field>
             </div>
 
             <div>
@@ -348,11 +345,19 @@ export function ProvidersManager() {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * Label + control. The label is tied to the control: an input child gets a
+ * generated id; pass `id` when the control is nested (a Select's trigger).
+ */
+function Field({ label, id, className, children }: { label: string; id?: string; className?: string; children: React.ReactElement<{ id?: string }> }) {
+  const auto = useId()
+  const controlId = id ?? auto
   return (
-    <div className="space-y-1.5">
-      <Label className="text-sm">{label}</Label>
-      {children}
+    <div className={"min-w-0 space-y-1.5 " + (className ?? "")}>
+      <Label htmlFor={controlId} className="text-sm">
+        {label}
+      </Label>
+      {id ? children : cloneElement(children, { id: controlId })}
     </div>
   )
 }
