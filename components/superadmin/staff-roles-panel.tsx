@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Plus, Trash2 } from "lucide-react"
@@ -125,13 +126,15 @@ export function StaffRolesPanel({
                 <div className="text-xs text-muted-foreground font-mono">{m.phone ?? m.email ?? "—"}</div>
               </div>
               <div className="flex items-center gap-2">
-                <select
-                  aria-label={fmt(t.staff.roleOf, { who: who(m) })}
-                  className={selectClass}
+                {/* Radix Select commits only on a real choice: arrow keys open and move
+                    through the list without saving, unlike a native select, which
+                    can fire a live role change on every key press. */}
+                <Select
                   value={m.role}
                   disabled={saving}
-                  onChange={async (e) => {
-                    const next = e.target.value as Role
+                  onValueChange={async (value) => {
+                    const next = value as Role
+                    if (next === m.role) return
                     // Owner changes decide who runs the restaurant: confirm them.
                     if (m.role === "owner" || next === "owner") {
                       const ok = await confirm({
@@ -152,12 +155,17 @@ export function StaffRolesPanel({
                       })
                   }}
                 >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {ROLE_LABEL[r]}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger size="sm" className="w-44" aria-label={fmt(t.staff.roleOf, { who: who(m) })}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABEL[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   variant="ghost"
