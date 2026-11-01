@@ -25,8 +25,23 @@ export interface SetupStep {
   action: SetupAction
 }
 
+/**
+ * Something stored on the restaurant that is set but wrong. It doesn't stop
+ * orders, but customers would see it, so the console flags it next to the
+ * missing steps. `section` is where it is fixed.
+ */
+export interface DataProblem {
+  key: "email_name_is_email" | "sms_sender_invalid"
+  section: SetupSection
+}
+
+// Same rule as the server's SMS_SENDER_RE (lib/roles.ts is server-only).
+const SMS_SENDER_RE = /^[A-Za-z0-9 ]{3,11}$/
+
 export interface ReadinessInput {
   readiness?: { has_owner: boolean; sms_sender_set: boolean } | null
+  sms_sender_name?: string | null
+  email_from_name?: string | null
   domains?: { is_active: boolean }[] | null
   order_notification_email?: string | null
   config?: {
@@ -43,6 +58,12 @@ export interface Readiness {
   total: number
   /** Every blocking step is done: customers can order. */
   ready: boolean
+  /** Blocking steps still open. */
+  openBlocking: number
+  /** For sorting and filtering: ready, one blocking step left, or more. */
+  stage: "ready" | "nearly" | "blocked"
+  /** Set but wrong values (see DataProblem). */
+  problems: DataProblem[]
   /** Zones are live but the draft has changes nobody published. */
   unpublishedZones: boolean
 }
@@ -106,11 +127,23 @@ export function getReadiness(b: ReadinessInput): Readiness {
   ]
 
   const done = steps.filter((s) => s.done).length
+  const ready = steps.every((s) => s.done || !s.blocking) && (cash || payoutReady)
+  const openBlocking = steps.filter((s) => !s.done && s.blocking).length
+
+  const problems: DataProblem[] = []
+  const emailName = b.email_from_name?.trim()
+  if (emailName && emailName.includes("@")) problems.push({ key: "email_name_is_email", section: "branding" })
+  const sms = b.sms_sender_name?.trim()
+  if (sms && !SMS_SENDER_RE.test(sms)) problems.push({ key: "sms_sender_invalid", section: "branding" })
+
   return {
     steps,
     done,
     total: steps.length,
-    ready: steps.every((s) => s.done || !s.blocking) && (cash || payoutReady),
+    ready,
+    openBlocking,
+    stage: ready ? "ready" : openBlocking <= 1 ? "nearly" : "blocked",
+    problems,
     unpublishedZones: !!(b.zones?.published_version && b.zones.has_draft_changes),
   }
 }

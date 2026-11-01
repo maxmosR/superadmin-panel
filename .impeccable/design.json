@@ -22,7 +22,7 @@
       "alarm-red": {
         "role": "tertiary",
         "displayName": "Alarm Red",
-        "canonical": "oklch(0.6 0.25 15)"
+        "canonical": "oklch(0.56 0.23 20)"
       },
       "caution-amber": {
         "role": "tertiary",
@@ -182,7 +182,7 @@
       "refersTo": "button-destructive",
       "description": "Final confirm of a destructive action.",
       "html": "<button class=\"ds-btn-destructive\">Discard draft</button>",
-      "css": ".ds-btn-destructive{height:36px;padding:8px 16px;border:0;border-radius:6px;background:oklch(0.6 0.25 15);color:#fff;font:500 14px/20px Geist,system-ui,sans-serif;cursor:pointer;transition:background .15s}.ds-btn-destructive:hover{background:oklch(0.6 0.25 15/.9)}.ds-btn-destructive:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.6 0.25 15/.2)}"
+      "css": ".ds-btn-destructive{height:36px;padding:8px 16px;border:0;border-radius:6px;background:oklch(0.56 0.23 20);color:#fff;font:500 14px/20px Geist,system-ui,sans-serif;cursor:pointer;transition:background .15s}.ds-btn-destructive:hover{background:oklch(0.6 0.25 15/.9)}.ds-btn-destructive:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.6 0.25 15/.2)}"
     },
     {
       "name": "Text Input",
@@ -198,7 +198,7 @@
       "refersTo": "badge-secondary",
       "description": "Zone status and readiness, always in words.",
       "html": "<span class=\"ds-badge ds-badge-live\">Live v3</span> <span class=\"ds-badge ds-badge-draft\">Unpublished changes</span> <span class=\"ds-badge ds-badge-off\">Not set up</span> <span class=\"ds-chip\">no owner</span>",
-      "css": ".ds-badge{display:inline-flex;align-items:center;padding:2px 8px;border:1px solid transparent;border-radius:6px;font:500 12px/16px Geist,system-ui,sans-serif}.ds-badge-live{background:oklch(0.95 0 0);color:oklch(0.15 0 0)}.ds-badge-draft{border-color:rgb(217 119 6/.5);color:#b45309}.ds-badge-off{background:oklch(0.6 0.25 15);color:#fff}.ds-chip{display:inline-flex;padding:0 6px;border:1px solid rgb(217 119 6/.4);border-radius:9999px;color:#b45309;font:400 12px/16px Geist,system-ui,sans-serif}"
+      "css": ".ds-badge{display:inline-flex;align-items:center;padding:2px 8px;border:1px solid transparent;border-radius:6px;font:500 12px/16px Geist,system-ui,sans-serif}.ds-badge-live{background:oklch(0.95 0 0);color:oklch(0.15 0 0)}.ds-badge-draft{border-color:rgb(217 119 6/.5);color:#b45309}.ds-badge-off{background:oklch(0.56 0.23 20);color:#fff}.ds-chip{display:inline-flex;padding:0 6px;border:1px solid rgb(217 119 6/.4);border-radius:9999px;color:#b45309;font:400 12px/16px Geist,system-ui,sans-serif}"
     },
     {
       "name": "Card",
@@ -220,7 +220,7 @@
       "kind": "custom",
       "description": "Zones editor save line; reuse wherever the console saves without a button.",
       "html": "<span class=\"ds-save\">Saved</span> <span class=\"ds-save ds-save-err\">Not saved · <button>Retry</button></span>",
-      "css": ".ds-save{font:400 12px/16px Geist,system-ui,sans-serif;color:oklch(0.45 0 0)}.ds-save-err{color:oklch(0.6 0.25 15)}.ds-save-err button{border:0;background:none;padding:0;color:inherit;font:inherit;text-decoration:underline;cursor:pointer}"
+      "css": ".ds-save{font:400 12px/16px Geist,system-ui,sans-serif;color:oklch(0.45 0 0)}.ds-save-err{color:oklch(0.56 0.23 20)}.ds-save-err button{border:0;background:none;padding:0;color:inherit;font:inherit;text-decoration:underline;cursor:pointer}"
     },
     {
       "name": "Setup Checklist",

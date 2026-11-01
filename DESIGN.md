@@ -4,7 +4,7 @@ description: The internal console where BirraOra operators set up restaurants, o
 colors:
   signal-blue: "oklch(0.54 0.19 255)"
   signal-blue-foreground: "oklch(0.98 0 0)"
-  alarm-red: "oklch(0.6 0.25 15)"
+  alarm-red: "oklch(0.56 0.23 20)"
   go-green: "oklch(0.6 0.2 140)"
   caution-amber: "oklch(0.7 0.2 60)"
   floor: "oklch(0.98 0 0)"
@@ -130,7 +130,7 @@ A hue-free grey scale carries the whole interface; four saturated colours are re
 - **Signal Blue** (`signal-blue`): the one primary action per view (e.g. "New business", "Publish"), focus rings (at 50% alpha, 3px), selected tabs and checkbox accents. In dark mode it lifts to `oklch(0.65 0.2 250)` and button text turns dark, so the label stays above 4.5:1 on both.
 
 ### Tertiary (state colours)
-- **Alarm Red** (`alarm-red`): destructive buttons, error alerts, "Not set up" badges, blocker counts on zone steps, unsaved/failed save lines.
+- **Alarm Red** (`alarm-red`): destructive buttons, error alerts, field errors, stored-data problems ("Da correggere"), blocker counts on zone steps, failed save lines. At `oklch(0.56 0.23 20)` error text reads 5.2:1 on Panel and white button text 4.9:1; keep it at or below that lightness.
 - **Caution Amber** (`caution-amber`; in markup usually Tailwind `amber-700` text on `amber-600/40` borders, `amber-50` fill): readiness gaps ("no owner", "no SMS sender"), "Unpublished changes", warnings that need acknowledgement before publishing.
 - **Go Green** (`go-green`; in markup `green-700` / `emerald-600`): confirmed good states such as an active payout account or a successful test quote.
 
@@ -239,7 +239,11 @@ Page title (24px, 700) with a one-line Quiet Ink description, and the page's one
 
 ### Setup checklist (signature)
 How the console shows whether a restaurant can take orders. The steps come from `lib/readiness.ts` and mirror the storefront's `restaurant_can_take_orders`: Owner, Active domain, SMS sender, Order email, Payout account (only blocking when card is the only payment method), Delivery zones, Opening hours.
-- **In the restaurants table:** "Ready to take orders" in green-700 with a check icon, or "Needs setup · 4 of 7 done" with an amber alert icon and a 12px "Missing: …" line. A "Needs setup (n)" filter sits next to the search.
+- **In the restaurants table:** "Ready to take orders" in green-700 with a check icon, or "Needs setup · 4 of 7 done" with an amber alert icon, a seven-segment meter (green done, amber blocking and open, grey open but not blocking) and a 12px "Missing: …" line. Set-but-wrong values add a red "Da correggere: …" line.
+- **Order and filters:** rows sort by how close they are to taking orders: one blocking step left ("Quasi pronti"), then more ("Bloccati"), then ready ("Pronti"). The segmented filter next to the search uses the same three groups plus "Tutti", each with its count.
+- **Payout cell:** one answer, not Stripe's two flags. "Carte attive" in quiet green text when Stripe has enabled both charges and payouts (with an amber "N requisiti da completare" line if Stripe wants more documents); otherwise an amber "In attesa di Stripe" chip with what is off.
+- **Data problems:** `getReadiness` also returns `problems` (an email address as the email display name, an SMS sender the provider would refuse). They don't stop orders, but they turn that section's menu mark into a red alert and show under its title.
+- **When ready:** the setup page opens with a green-tinted "Pronto a ricevere ordini" panel and the next two actions: open the ordering site, copy the owner's sign-in link.
 - **On the setup page (from 1024px):** the section menu carries it: a readiness summary on top, then each section with a green check, amber circle (blocking step open) or grey circle (non-blocking open). Each section's open steps also show under its title in amber.
 - **On the setup page (below 1024px):** a Well-tinted box at the top with a two-column list. Done steps get a green check and Quiet Ink text; open steps get an amber circle (grey if not blocking) and a "Set it below →" link that scrolls to that section and puts the cursor in its first empty field, "Open the zones editor →", or a note when the owner does it (opening hours).
 - **After creating a restaurant:** the same list, with "Continue setup" opening the restaurant's setup page.

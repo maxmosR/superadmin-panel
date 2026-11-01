@@ -24,6 +24,18 @@ export const en = {
   before: "Before it can take orders",
   openZones: "Open the zones editor",
   setBelow: "Set it below",
+  problems: {
+    email_name_is_email: "Email display name is an email address",
+    sms_sender_invalid: "SMS sender has characters the provider refuses",
+  },
+  toFix: "To fix: {list}",
+  toFixShort: "to fix",
+  fixIt: "Fix it below",
+  readyTitle: "Ready to take orders",
+  readyBody: "Customers can order whenever the restaurant is open. Next:",
+  openSite: "Open the ordering site",
+  copyOwnerLink: "Copy the owner's sign-in link",
+  copied: "Link copied",
 }
 
 export const it: typeof en = {
@@ -51,4 +63,16 @@ export const it: typeof en = {
   before: "Prima di poter ricevere ordini",
   openZones: "Apri l'editor delle zone",
   setBelow: "Impostalo qui sotto",
+  problems: {
+    email_name_is_email: "Il nome mittente email è un indirizzo email",
+    sms_sender_invalid: "Il mittente SMS ha caratteri che il provider rifiuta",
+  },
+  toFix: "Da correggere: {list}",
+  toFixShort: "da correggere",
+  fixIt: "Correggilo qui sotto",
+  readyTitle: "Pronto a ricevere ordini",
+  readyBody: "I clienti possono ordinare quando il ristorante è aperto. Prossimi passi:",
+  openSite: "Apri il sito per gli ordini",
+  copyOwnerLink: "Copia il link di accesso per il titolare",
+  copied: "Link copiato",
 }

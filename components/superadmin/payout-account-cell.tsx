@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Copy, Loader2 } from "lucide-react"
+import { CheckCircle2, Copy, Loader2 } from "lucide-react"
 import { useConfirm } from "./confirm-dialog"
 import { useI18n } from "@/lib/i18n/client"
 import { apiError } from "@/lib/i18n/api-error"
@@ -111,20 +111,35 @@ export function PayoutAccountCell({
           {copied ? t.payout.copied : ""}
         </span>
       </button>
-      <div className="flex flex-wrap gap-1">
-        {/* Green when Stripe has switched it on; "off" is the normal state while the owner finishes onboarding: amber, not red. */}
-        <Badge variant="outline" className={account.charges_enabled ? "border-green-700/40 text-green-700" : "border-amber-600/50 text-amber-700"}>
-          {account.charges_enabled ? t.payout.chargesOn : t.payout.chargesOff}
-        </Badge>
-        <Badge variant="outline" className={account.payouts_enabled ? "border-green-700/40 text-green-700" : "border-amber-600/50 text-amber-700"}>
-          {account.payouts_enabled ? t.payout.payoutsOn : t.payout.payoutsOff}
-        </Badge>
-        {account.outstanding_requirements > 0 && (
+      {/* One answer to "can this restaurant take cards?". Quiet when yes;
+          amber with what's missing while Stripe onboarding is unfinished. */}
+      {account.charges_enabled && account.payouts_enabled ? (
+        <div className="space-y-0.5">
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700">
+            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+            {t.payout.cardsOn}
+          </span>
+          {/* Stripe can ask for more documents later; cards keep working until its deadline. */}
+          {account.outstanding_requirements > 0 && (
+            <p className="text-xs text-amber-700">{t.payout.due(account.outstanding_requirements)}</p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-0.5">
           <Badge variant="outline" className="border-amber-600/50 text-amber-700">
-            {t.payout.due(account.outstanding_requirements)}
+            {t.payout.cardsWaiting}
           </Badge>
-        )}
-      </div>
+          <p className="text-xs text-muted-foreground">
+            {[
+              account.charges_enabled ? null : t.payout.chargesOff,
+              account.payouts_enabled ? null : t.payout.payoutsOff,
+              account.outstanding_requirements > 0 ? t.payout.due(account.outstanding_requirements) : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

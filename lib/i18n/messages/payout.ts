@@ -15,10 +15,10 @@ export const en = {
   copyTitle: "Copy account id",
   copyLabel: "Copy Stripe account id {id}",
   copied: "copied",
-  chargesOn: "charges on",
   chargesOff: "charges off",
-  payoutsOn: "payouts on",
   payoutsOff: "payouts off",
+  cardsOn: "Cards active",
+  cardsWaiting: "Waiting for Stripe",
   due: (n: number) => (n === 1 ? "1 requirement due" : `${n} requirements due`),
 }
 
@@ -38,9 +38,9 @@ export const it: typeof en = {
   copyTitle: "Copia l'id del conto",
   copyLabel: "Copia l'id del conto Stripe {id}",
   copied: "copiato",
-  chargesOn: "incassi attivi",
   chargesOff: "incassi spenti",
-  payoutsOn: "bonifici attivi",
   payoutsOff: "bonifici spenti",
+  cardsOn: "Carte attive",
+  cardsWaiting: "In attesa di Stripe",
   due: (n: number) => (n === 1 ? "1 requisito da completare" : `${n} requisiti da completare`),
 }

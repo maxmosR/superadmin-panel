@@ -5,6 +5,35 @@ import type { Readiness, SetupSection, SetupStep } from "@/lib/readiness"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n/client"
 
+/**
+ * Seven short segments, one per step: green done, amber blocking and open,
+ * grey open but not blocking. A 6/7 and a 2/7 restaurant look different at a
+ * glance; the words beside it carry the same facts for screen readers.
+ */
+export function SetupMeter({ readiness }: { readiness: Readiness }) {
+  return (
+    <div className="flex gap-0.5" aria-hidden>
+      {readiness.steps.map((s) => (
+        <span
+          key={s.key}
+          className={cn("h-1.5 w-4 rounded-full", s.done ? "bg-green-600" : s.blocking ? "bg-amber-500" : "bg-muted-foreground/30")}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** "Da correggere: …" for values that are set but wrong. */
+function ProblemLine({ readiness }: { readiness: Readiness }) {
+  const { t, fmt } = useI18n()
+  if (!readiness.problems.length) return null
+  return (
+    <p className="max-w-[18rem] text-xs text-destructive">
+      {fmt(t.setup.toFix, { list: readiness.problems.map((p) => t.setup.problems[p.key]).join(", ") })}
+    </p>
+  )
+}
+
 /** One line for the restaurants table: ready, or how far along and what's left. */
 export function SetupSummary({ readiness }: { readiness: Readiness }) {
   const { t, fmt } = useI18n()
@@ -20,6 +49,7 @@ export function SetupSummary({ readiness }: { readiness: Readiness }) {
         {/* Only the payout step can be open here: cash still works without it. */}
         {open.length > 0 && <p className="text-xs text-muted-foreground">{t.setup.cashOnly}</p>}
         {readiness.unpublishedZones && <p className="text-xs text-amber-700">{t.setup.unpublishedZones}</p>}
+        <ProblemLine readiness={readiness} />
       </div>
     )
   }
@@ -33,8 +63,10 @@ export function SetupSummary({ readiness }: { readiness: Readiness }) {
           <span className="font-normal text-muted-foreground tabular-nums">· {fmt(t.setup.progress, { done: readiness.done, total: readiness.total })}</span>
         </span>
       </div>
+      <SetupMeter readiness={readiness} />
       <p className="max-w-[18rem] text-xs text-muted-foreground">{fmt(t.setup.missing, { list: open.map((s) => t.setup.steps[s.key]).join(", ") })}</p>
       {readiness.unpublishedZones && <p className="text-xs text-amber-700">{t.setup.unpublishedZones}</p>}
+      <ProblemLine readiness={readiness} />
     </div>
   )
 }
@@ -57,9 +89,9 @@ export function SetupChecklist({
   return (
     <section aria-labelledby="setup-heading" className="rounded-lg border bg-muted/40 p-4">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 id="setup-heading" className="text-sm font-semibold">
+        <h2 id="setup-heading" className="text-sm font-semibold">
           {readiness.ready ? t.setup.ready : t.setup.before}
-        </h3>
+        </h2>
         <span className="text-xs text-muted-foreground tabular-nums">
           {fmt(t.setup.progress, { done: readiness.done, total: readiness.total })}
         </span>
@@ -78,6 +110,23 @@ export function SetupChecklist({
                 <span className="sr-only">: {step.done ? t.common.done : t.common.notDone}</span>
               </span>
               {!step.done && <StepAction step={step} zonesHref={zonesHref} onJump={onJump} />}
+            </div>
+          </li>
+        ))}
+        {readiness.problems.map((p) => (
+          <li key={p.key} className="flex items-start gap-2 text-sm">
+            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden />
+            <div className="min-w-0">
+              <span>{t.setup.problems[p.key]}</span>
+              <div>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  onClick={() => onJump(p.section)}
+                >
+                  {t.setup.fixIt} <ArrowRight className="h-3 w-3" aria-hidden />
+                </button>
+              </div>
             </div>
           </li>
         ))}

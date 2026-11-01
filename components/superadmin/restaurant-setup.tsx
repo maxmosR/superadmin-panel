@@ -4,7 +4,7 @@ import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowRight, CheckCircle2, Circle, Loader2, MapPinned } from "lucide-react"
+import { ArrowLeft, ArrowRight, CheckCircle2, Circle, CircleAlert, Copy, ExternalLink, Loader2, MapPinned } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -14,6 +14,7 @@ import { useI18n } from "@/lib/i18n/client"
 import { apiError } from "@/lib/i18n/api-error"
 import type { Messages } from "@/lib/i18n/messages"
 import { cn } from "@/lib/utils"
+import { domainDisplayHost } from "@/lib/domains"
 import { ConsoleShell, PageHead } from "./console-shell"
 import { SetupChecklist, SetupSummary } from "./setup-status"
 import { DomainManager } from "./domain-manager"
@@ -74,8 +75,9 @@ function sectionTitle(t: Messages, id: SectionId): string {
   }
 }
 
-/** done: every step done · todo: a blocking step open · later: only non-blocking steps open · none: no steps. */
-function sectionState(readiness: Readiness, id: SectionId): "done" | "todo" | "later" | "none" {
+/** problem: a stored value is wrong · done: every step done · todo: a blocking step open · later: only non-blocking steps open · none: no steps. */
+function sectionState(readiness: Readiness, id: SectionId): "problem" | "done" | "todo" | "later" | "none" {
+  if (readiness.problems.some((p) => p.section === id)) return "problem"
   const steps = readiness.steps.filter((s) => STEPS_OF[id].includes(s.key))
   if (!steps.length) return "none"
   if (steps.every((s) => s.done)) return "done"
@@ -289,6 +291,8 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
 
         <div className="min-w-0 space-y-6">
           <p className="text-sm text-muted-foreground">{t.edit.saveModel}</p>
+
+          {readiness.ready && <ReadyPanel row={row} rootDomain={rootDomain} />}
 
           {/* Phones and tablets: the checklist stands in for the side menu. */}
           <div className="lg:hidden">
@@ -522,8 +526,61 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
   )
 }
 
+/**
+ * The end of setup: say it plainly and hand over the next two things an
+ * operator does (look at the live site, send the owner their sign-in link).
+ */
+function ReadyPanel({ row, rootDomain }: { row: BusinessRow; rootDomain: string }) {
+  const { t } = useI18n()
+  const [copied, setCopied] = useState(false)
+  const primary = row.domains?.find((d) => d.is_primary && d.is_active) ?? row.domains?.find((d) => d.is_active)
+  if (!primary) return null
+  const host = domainDisplayHost(primary.domain, rootDomain)
+  const base = `${host.includes("localhost") ? "http" : "https"}://${host}`
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${base}/login`)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard blocked: the site link is still there to open.
+    }
+  }
+  return (
+    <section aria-labelledby="ready-title" className="rounded-xl border border-green-700/30 bg-green-50 p-5">
+      <h2 id="ready-title" className="flex items-center gap-2 text-base font-semibold text-green-800">
+        <CheckCircle2 className="h-5 w-5" aria-hidden />
+        {t.setup.readyTitle}
+      </h2>
+      <p className="mt-1 text-sm text-green-900/80">{t.setup.readyBody}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" asChild className="bg-background">
+          <a href={base} target="_blank" rel="noreferrer">
+            <ExternalLink className="h-4 w-4" aria-hidden />
+            {t.setup.openSite}
+          </a>
+        </Button>
+        <Button variant="outline" size="sm" className="bg-background" onClick={() => void copy()}>
+          <Copy className="h-4 w-4" aria-hidden />
+          {copied ? t.setup.copied : t.setup.copyOwnerLink}
+        </Button>
+        <span className="sr-only" aria-live="polite">
+          {copied ? t.setup.copied : ""}
+        </span>
+      </div>
+    </section>
+  )
+}
+
 function StateMark({ state, t }: { state: ReturnType<typeof sectionState>; t: Messages }) {
   if (state === "none") return null
+  if (state === "problem")
+    return (
+      <>
+        <CircleAlert className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
+        <span className="sr-only">: {t.setup.toFixShort}</span>
+      </>
+    )
   if (state === "done")
     return (
       <>
@@ -543,12 +600,23 @@ function StateMark({ state, t }: { state: ReturnType<typeof sectionState>; t: Me
 function OpenSteps({ readiness, id }: { readiness: Readiness; id: SectionId }) {
   const { t } = useI18n()
   const open = readiness.steps.filter((s) => STEPS_OF[id].includes(s.key) && !s.done)
-  if (!open.length) return null
+  const problems = readiness.problems.filter((p) => p.section === id)
+  if (!open.length && !problems.length) return null
   return (
-    <p className={cn("text-xs", open.some((s) => s.blocking) ? "text-amber-700" : "text-muted-foreground")}>
-      {open.map((s) => t.setup.steps[s.key]).join(", ")}
-      {open[0].hint ? ` · ${t.setup.hints[open[0].hint]}` : ""}
-    </p>
+    <>
+      {open.length > 0 && (
+        <p className={cn("text-sm", open.some((s) => s.blocking) ? "text-amber-700" : "text-muted-foreground")}>
+          {open.map((s) => t.setup.steps[s.key]).join(", ")}
+          {open[0].hint ? ` · ${t.setup.hints[open[0].hint]}` : ""}
+        </p>
+      )}
+      {problems.map((p) => (
+        <p key={p.key} className="flex items-center gap-1.5 text-sm text-destructive">
+          <CircleAlert className="h-4 w-4 shrink-0" aria-hidden />
+          {t.setup.problems[p.key]}
+        </p>
+      ))}
+    </>
   )
 }
 

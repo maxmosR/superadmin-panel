@@ -20,6 +20,10 @@ import { SetupSummary } from "./setup-status"
 import { CreateBusinessDialog } from "./create-business-dialog"
 import { PayoutAccountCell, type PayoutAccountSummary } from "./payout-account-cell"
 
+type Filter = "all" | "nearly" | "blocked" | "ready"
+const FILTERS: Filter[] = ["all", "nearly", "blocked", "ready"]
+const STAGE_ORDER = { nearly: 0, blocked: 1, ready: 2 } as const
+
 export interface BusinessRow {
   business_id: string
   business_name: string
@@ -78,7 +82,7 @@ export function SuperAdminDashboard({
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [query, setQuery] = useState("")
-  const [filter, setFilter] = useState<"all" | "setup">("all")
+  const [filter, setFilter] = useState<Filter>("all")
 
   const hasLoaded = useRef(false)
   const load = useCallback(async () => {
@@ -108,16 +112,31 @@ export function SuperAdminDashboard({
     load()
   }, [load])
 
+  // Closest to ready first: one step left, then the most blocked last of the
+  // open ones, then the ready ones (they need the least attention).
   const withReadiness = useMemo(
-    () => businesses.map((b) => ({ row: b, readiness: getReadiness(b) })),
+    () =>
+      businesses
+        .map((b) => ({ row: b, readiness: getReadiness(b) }))
+        .sort(
+          (a, b) =>
+            STAGE_ORDER[a.readiness.stage] - STAGE_ORDER[b.readiness.stage] ||
+            a.readiness.openBlocking - b.readiness.openBlocking ||
+            b.readiness.problems.length - a.readiness.problems.length ||
+            a.row.business_name.localeCompare(b.row.business_name),
+        ),
     [businesses],
   )
-  const needsSetup = withReadiness.filter((x) => !x.readiness.ready).length
+  const counts = useMemo(() => {
+    const c = { all: withReadiness.length, nearly: 0, blocked: 0, ready: 0 }
+    for (const x of withReadiness) c[x.readiness.stage]++
+    return c
+  }, [withReadiness])
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
     return withReadiness.filter(({ row, readiness }) => {
-      if (filter === "setup" && readiness.ready) return false
+      if (filter !== "all" && readiness.stage !== filter) return false
       if (!q) return true
       return (
         row.business_name.toLowerCase().includes(q) ||
@@ -155,13 +174,16 @@ export function SuperAdminDashboard({
 
       <Card className="gap-0 py-0">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-6">
-          <div role="group" aria-label={t.dashboard.filterLabel} className="inline-flex rounded-md border bg-muted/50 p-0.5">
-            <FilterButton active={filter === "all"} onClick={() => setFilter("all")}>
-              {t.dashboard.all} <span className="tabular-nums text-muted-foreground">{loading ? "" : businesses.length}</span>
-            </FilterButton>
-            <FilterButton active={filter === "setup"} onClick={() => setFilter("setup")}>
-              {t.dashboard.needsSetup} <span className="tabular-nums text-muted-foreground">{loading ? "" : needsSetup}</span>
-            </FilterButton>
+          <div
+            role="group"
+            aria-label={t.dashboard.filterLabel}
+            className="inline-flex max-w-full overflow-x-auto rounded-md border bg-muted/50 p-0.5 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)] sm:[mask-image:none]"
+          >
+            {FILTERS.map((f) => (
+              <FilterButton key={f} active={filter === f} onClick={() => setFilter(f)}>
+                {t.dashboard[f]} <span className="tabular-nums text-muted-foreground">{loading ? "" : counts[f]}</span>
+              </FilterButton>
+            ))}
           </div>
           <div className="relative w-full sm:w-72">
             <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
@@ -192,7 +214,7 @@ export function SuperAdminDashboard({
           </div>
         ) : shown.length === 0 ? (
           <div className="px-6 py-16 text-center text-sm text-muted-foreground">
-            {filter === "setup" && !query ? t.dashboard.allReady : t.dashboard.noMatch}{" "}
+            {filter !== "all" && !query ? t.dashboard.noneInFilter : t.dashboard.noMatch}{" "}
             <button
               type="button"
               className="font-medium text-primary underline-offset-2 hover:underline"
@@ -299,27 +321,53 @@ function RestaurantName({ row }: { row: BusinessRow }) {
   )
 }
 
+const DOMAINS_SHOWN = 3
+
 function DomainList({ domains, rootDomain }: { domains: BusinessRow["domains"]; rootDomain: string }) {
   const { t } = useI18n()
+  const [all, setAll] = useState(false)
   if (!domains?.length) return <span className="text-sm text-muted-foreground">{t.common.none}</span>
+  // Primary first (the API sorts it so); the rest fold after three.
+  const hidden = domains.length - DOMAINS_SHOWN
+  const visible = all || hidden <= 0 ? domains : domains.slice(0, DOMAINS_SHOWN)
   return (
     <ul className="flex flex-col gap-1">
-      {domains.map((d) => {
+      {visible.map((d) => {
         const host = domainDisplayHost(d.domain, rootDomain)
         return (
-          <li key={d.domain} className="flex flex-wrap items-center gap-x-1.5 text-sm break-all">
+          <li key={d.domain} className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm">
             {d.is_active ? (
-              <a href={`http://${host}`} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+              <a
+                href={`http://${host}`}
+                target="_blank"
+                rel="noreferrer"
+                title={host}
+                className="max-w-full truncate text-primary underline underline-offset-2"
+              >
                 {host}
               </a>
             ) : (
-              <span className="text-muted-foreground line-through">{host}</span>
+              <span title={host} className="max-w-full truncate text-muted-foreground line-through">
+                {host}
+              </span>
             )}
             {d.is_primary && <Badge variant="secondary">{t.common.primary}</Badge>}
             {!d.is_active && <span className="text-xs text-muted-foreground">{t.common.off}</span>}
           </li>
         )
       })}
+      {hidden > 0 && (
+        <li>
+          <button
+            type="button"
+            aria-expanded={all}
+            className="rounded-sm text-xs font-medium text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            onClick={() => setAll((v) => !v)}
+          >
+            {all ? t.dashboard.fewerDomains : t.dashboard.moreDomains(hidden)}
+          </button>
+        </li>
+      )}
     </ul>
   )
 }
@@ -359,7 +407,7 @@ function FilterButton({ active, onClick, children }: { active: boolean; onClick:
       aria-pressed={active}
       onClick={onClick}
       className={
-        "inline-flex h-8 items-center gap-1.5 rounded-[5px] px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 " +
+        "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[5px] px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 " +
         (active ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground")
       }
     >

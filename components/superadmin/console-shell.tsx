@@ -63,7 +63,7 @@ export function ConsoleShell({
           </div>
 
           {/* Full row under the brand on phones, inline from md. */}
-          <nav aria-label={t.shell.nav.label} className="-mx-4 w-[calc(100%+2rem)] overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:w-auto md:px-0">
+          <nav aria-label={t.shell.nav.label} className="-mx-4 w-[calc(100%+2rem)] overflow-x-auto px-4 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)] md:mx-0 md:w-auto md:px-0 md:[mask-image:none]">
             <ul className="flex gap-1">
               {NAV.map((item) => {
                 const active = isActive(item.href)
