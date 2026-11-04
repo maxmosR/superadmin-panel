@@ -46,8 +46,12 @@ const STEPS_OF: Record<SectionId, SetupStep["key"][]> = {
   zones: ["zones"],
 }
 
-// Same rule as the server (lib/roles.ts is server-only).
-const SMS_SENDER_RE = /^[A-Za-z0-9 ]{3,11}$/
+// Same rule as the server's parseWhatsapp (lib/roles.ts is server-only).
+const WHATSAPP_OK = (v: string) => {
+  let p = v.trim().replace(/[\s().-]/g, "")
+  if (p.startsWith("00")) p = `+${p.slice(2)}`
+  return /^\+[1-9][0-9]{6,14}$/.test(p)
+}
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const sectionDomId = (id: SectionId) => `section-${id}`
@@ -354,17 +358,39 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
             description={t.edit.brandingDescription}
             readiness={readiness}
             onDirty={setDirty}
-            initial={{ sms_sender_name: row.sms_sender_name ?? "", email_from_name: row.email_from_name ?? "" }}
+            initial={{ email_from_name: row.email_from_name ?? "", whatsapp_number: row.whatsapp_number ?? "" }}
             validate={(v) => ({
-              sms_sender_name: !v.sms_sender_name.trim() || SMS_SENDER_RE.test(v.sms_sender_name.trim()) ? undefined : t.edit.smsInvalid,
               email_from_name: v.email_from_name.includes("@") ? t.edit.emailNameIsEmail : undefined,
+              whatsapp_number: !v.whatsapp_number.trim() || WHATSAPP_OK(v.whatsapp_number) ? undefined : t.edit.whatsappInvalid,
             })}
-            onSave={(v) => patch(v)}
+            onSave={(v) => patch({ email_from_name: v.email_from_name, whatsapp_number: v.whatsapp_number.trim() || null })}
           >
             {({ v, set, err }) => (
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label={t.edit.smsSender} hint={t.edit.smsSenderHint} error={err.sms_sender_name}>
-                  {(p) => <Input {...p} value={v.sms_sender_name} maxLength={11} onChange={(e) => set("sms_sender_name", e.target.value)} />}
+                {/* The sender is the restaurant's APPROVED alias: registered on the SMS page, read-only here. */}
+                <Field label={t.edit.smsSender} hint={t.edit.smsSenderApproved}>
+                  {(p) => (
+                    <div className="flex items-center gap-3">
+                      <Input {...p} value={row.sms_sender_name ?? t.edit.smsSenderNone} readOnly disabled />
+                      <Link
+                        href={`/sms/${row.business_id}`}
+                        className="shrink-0 rounded-sm text-sm font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      >
+                        {t.edit.smsManage}
+                      </Link>
+                    </div>
+                  )}
+                </Field>
+                <Field label={t.edit.whatsapp} hint={t.edit.whatsappHint} error={err.whatsapp_number}>
+                  {(p) => (
+                    <Input
+                      {...p}
+                      value={v.whatsapp_number}
+                      inputMode="tel"
+                      placeholder="+39 333 123 4567"
+                      onChange={(e) => set("whatsapp_number", e.target.value)}
+                    />
+                  )}
                 </Field>
                 <Field label={t.edit.emailName} error={err.email_from_name}>
                   {(p) => <Input {...p} value={v.email_from_name} maxLength={80} onChange={(e) => set("email_from_name", e.target.value)} />}

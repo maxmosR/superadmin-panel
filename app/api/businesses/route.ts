@@ -2,11 +2,43 @@ import { NextResponse } from "next/server"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { normalizeDomain } from "@/lib/domains"
-import { SLUG_RE, SMS_SENDER_RE, assignRoleAsOperator, findOrCreateIdentity, parseIdentifier } from "@/lib/roles"
+import { SLUG_RE, assignRoleAsOperator, findOrCreateIdentity, parseIdentifier, parseWhatsapp } from "@/lib/roles"
 import { NO_ZONES, zoneBadges, type ZoneSetRow } from "@/lib/zones/badge"
 import { isUuid } from "@/lib/zones/validate"
 
 export const dynamic = "force-dynamic"
+
+// ---------------------------------------------------------------------------
+// businesses.whatsapp_number arrives with migration 20261104120000. Until a
+// database has it, reading treats every number as unset, clearing is a no-op,
+// and setting one answers a clear error instead of failing the whole request.
+// ---------------------------------------------------------------------------
+const MISSING_COLUMN = new Set(["42703", "PGRST204"])
+const isMissingColumn = (e: { code?: string; message?: string } | null) =>
+  !!e && (MISSING_COLUMN.has(e.code ?? "") || /whatsapp_number/.test(e.message ?? ""))
+
+async function readWhatsappNumbers(supabase: ReturnType<typeof createAdminClient>): Promise<Map<string, string>> {
+  const { data, error } = await supabase.from("businesses").select("business_id, whatsapp_number").eq("deleted", false)
+  if (error) {
+    if (!isMissingColumn(error)) console.error(JSON.stringify({ event: "whatsapp_read_failed", code: error.code ?? null }))
+    return new Map()
+  }
+  return new Map(
+    (data ?? [])
+      .filter((r: { whatsapp_number: string | null }) => !!r.whatsapp_number)
+      .map((r: { business_id: string; whatsapp_number: string }) => [r.business_id, r.whatsapp_number]),
+  )
+}
+
+/** Sets or clears the WhatsApp number. Returns an error message, or null. */
+async function writeWhatsapp(supabase: ReturnType<typeof createAdminClient>, businessId: string, value: string | null): Promise<string | null> {
+  const { error } = await supabase.from("businesses").update({ whatsapp_number: value }).eq("business_id", businessId)
+  if (!error) return null
+  if (isMissingColumn(error)) {
+    return value === null ? null : "The WhatsApp number needs the latest database migration (20261104120000_sms_sender_aliases)."
+  }
+  return error.message
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/businesses — list all businesses with domains, owners count and readiness.
@@ -35,6 +67,11 @@ export async function GET(request?: Request) {
   const { data, error } = await query
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // WhatsApp numbers, read on their own: a database without the
+  // sms_sender_aliases migration has no such column, and that must not stop
+  // the business list from loading.
+  const whatsappBy = await readWhatsappNumbers(supabase)
 
   // Delivery zone badges: one query for every restaurant's draft and live set.
   let zoneQuery = supabase
@@ -67,7 +104,9 @@ export async function GET(request?: Request) {
       phone: b.phone,
       email: b.email,
       logo_url: b.logo_url,
+      // Mirror of the APPROVED SMS alias (sms_sender_aliases), read-only here.
       sms_sender_name: b.sms_sender_name ?? null,
+      whatsapp_number: whatsappBy.get(b.business_id) ?? null,
       email_from_name: b.email_from_name ?? null,
       order_notification_email: b.order_notification_email ?? null,
       created_at: b.created_at,
@@ -109,7 +148,9 @@ function payoutSummary(p: any) {
 // POST /api/businesses — provision a business and its first owner.
 // Body: { business_name, name_abbreviation, slug, subdomain,
 //         owner_identifier, owner_kind: "phone"|"email",
-//         sms_sender_name?, email_from_name?, …contact/config fields }
+//         whatsapp_number?, email_from_name?, …contact/config fields }
+// The SMS sender is not set here: it is the restaurant's APPROVED alias,
+// registered from the SMS screen (/sms).
 // The owner is found or pre-created by phone/email (no password; they sign
 // in with a code) and made owner through set_role_assignment. The slug is
 // immutable once created.
@@ -131,7 +172,7 @@ export async function POST(request: Request) {
   const slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : ""
   const subdomain = normalizeDomain(body.subdomain)
   const owner = parseIdentifier(body.owner_kind, body.owner_identifier)
-  const smsSender = typeof body.sms_sender_name === "string" && body.sms_sender_name.trim() ? body.sms_sender_name.trim() : null
+  const whatsapp = parseWhatsapp(body.whatsapp_number)
   const emailFromName =
     typeof body.email_from_name === "string" && body.email_from_name.trim() ? body.email_from_name.trim().slice(0, 80) : null
 
@@ -141,7 +182,7 @@ export async function POST(request: Request) {
   if (!SLUG_RE.test(slug)) errors.push("slug must be 3–40 characters: a-z, 0-9 and -")
   if (!subdomain) errors.push("subdomain is invalid or reserved")
   if (!owner) errors.push("a valid owner phone or email is required")
-  if (smsSender && !SMS_SENDER_RE.test(smsSender)) errors.push("sms_sender_name must be 3–11 letters, digits or spaces")
+  if (whatsapp === undefined) errors.push("whatsapp_number must be an international number, e.g. +39 333 123 4567")
   if (errors.length) return NextResponse.json({ error: errors.join("; ") }, { status: 400 })
 
   const supabase = createAdminClient()
@@ -180,7 +221,6 @@ export async function POST(request: Request) {
         business_name: businessName,
         name_abbreviation: nameAbbreviation,
         slug,
-        sms_sender_name: smsSender,
         email_from_name: emailFromName,
         tax_id: body.tax_id ?? null,
         address: body.address ?? null,
@@ -192,6 +232,11 @@ export async function POST(request: Request) {
       .single()
     if (bizErr || !biz) throw new Error(bizErr?.message || "Failed to create business")
     businessId = biz.business_id as string
+
+    if (whatsapp) {
+      const waErr = await writeWhatsapp(supabase, businessId, whatsapp)
+      if (waErr) throw new Error(waErr)
+    }
 
     const { error: configErr } = await supabase.from("business_configurations").insert({
       business_id: businessId,
@@ -264,12 +309,13 @@ export async function PATCH(request: Request) {
     if ("phone" in body) bizUpdate.phone = body.phone || null
     if ("email" in body) bizUpdate.email = body.email || null
     if ("logo_url" in body) bizUpdate.logo_url = body.logo_url || null
-    if ("sms_sender_name" in body) {
-      const v = typeof body.sms_sender_name === "string" ? body.sms_sender_name.trim() : ""
-      if (v && !SMS_SENDER_RE.test(v)) {
-        return NextResponse.json({ error: "sms_sender_name must be 3–11 letters, digits or spaces" }, { status: 400 })
+    if ("whatsapp_number" in body) {
+      const v = parseWhatsapp(body.whatsapp_number)
+      if (v === undefined) {
+        return NextResponse.json({ error: "whatsapp_number must be an international number, e.g. +39 333 123 4567" }, { status: 400 })
       }
-      bizUpdate.sms_sender_name = v || null
+      const waErr = await writeWhatsapp(supabase, businessId, v)
+      if (waErr) return NextResponse.json({ error: waErr }, { status: 409 })
     }
     if ("email_from_name" in body) {
       const v = typeof body.email_from_name === "string" ? body.email_from_name.trim().slice(0, 80) : ""

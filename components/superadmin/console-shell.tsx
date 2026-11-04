@@ -11,6 +11,7 @@ import { LanguageSwitch, useI18n } from "@/lib/i18n/client"
 
 const NAV = [
   { href: "/", key: "restaurants" },
+  { href: "/sms", key: "sms" },
   { href: "/operators", key: "operators" },
   { href: "/features", key: "sections" },
   { href: "/providers", key: "providers" },

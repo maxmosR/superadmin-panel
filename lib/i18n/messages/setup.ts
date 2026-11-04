@@ -10,7 +10,7 @@ export const en = {
     hours: "Opening hours",
   },
   hints: {
-    sms: "Register the name at OpenAPI.com first.",
+    sms: "Register a sender alias on the SMS page and wait for approval. Until then phone sign-in is blocked.",
     payoutWaiting: "Waiting for Stripe to enable charges and payouts.",
     payoutCard: "Needed for card payments.",
     hours: "The owner sets them in the restaurant's admin panel.",
@@ -55,7 +55,7 @@ export const it: typeof en = {
     hours: "Orari di apertura",
   },
   hints: {
-    sms: "Prima registra il nome su OpenAPI.com.",
+    sms: "Registra un alias mittente nella pagina SMS e attendi l'approvazione. Fino ad allora l'accesso con telefono è bloccato.",
     payoutWaiting: "In attesa che Stripe attivi incassi e bonifici.",
     payoutCard: "Serve per i pagamenti con carta.",
     hours: "Li imposta il titolare nel pannello del ristorante.",

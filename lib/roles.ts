@@ -16,6 +16,19 @@ export const SLUG_RE = /^[a-z0-9-]{3,40}$/
 /** OpenAPI.com accepts 3–11 characters; the database 1–11. */
 export const SMS_SENDER_RE = /^[A-Za-z0-9 ]{3,11}$/
 
+/**
+ * businesses.whatsapp_number: E.164 with '+'. Spaces, dots, dashes and
+ * brackets are dropped; "00" becomes "+". Null for empty; undefined when invalid.
+ */
+export function parseWhatsapp(v: unknown): string | null | undefined {
+  if (v === null || v === undefined) return null
+  if (typeof v !== "string") return undefined
+  let p = v.trim().replace(/[\s().-]/g, "")
+  if (!p) return null
+  if (p.startsWith("00")) p = `+${p.slice(2)}`
+  return /^\+[1-9][0-9]{6,14}$/.test(p) ? p : undefined
+}
+
 export type Identifier = { kind: "phone"; e164: string } | { kind: "email"; email: string }
 
 /** Phone (E.164, +39 default) or email. */

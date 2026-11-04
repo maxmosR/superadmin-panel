@@ -32,6 +32,9 @@ import * as zonesTest from "@/app/api/zones/test/route"
 import * as zonesPublish from "@/app/api/zones/publish/route"
 import * as zonesRestore from "@/app/api/zones/restore/route"
 import * as zonesVersion from "@/app/api/zones/version/route"
+import * as sms from "@/app/api/sms/route"
+import * as smsBusiness from "@/app/api/sms/business/route"
+import * as smsAlias from "@/app/api/sms/alias/route"
 
 const lookup = vi.mocked(lookupOperator)
 const adminClient = vi.mocked(createAdminClient)
@@ -207,6 +210,12 @@ adminHandlers.push(
   ["GET /api/zones/version", () => zonesVersion.GET(new Request(`http://localhost/api/zones/version?business_id=${BIZ}&version=1`))],
 )
 
+// SMS sender aliases and usage.
+adminHandlers.push(
+  ["GET /api/sms", () => sms.GET()],
+  ["GET /api/sms/business", () => smsBusiness.GET(new Request(`http://localhost/api/sms/business?business_id=${BIZ}`))],
+)
+
 const allHandlers: Array<[string, () => Promise<Response>]> = [
   ...adminHandlers,
   ["GET /api/me", () => me.GET()],
@@ -215,6 +224,11 @@ const allHandlers: Array<[string, () => Promise<Response>]> = [
   [
     "POST /api/businesses/payout-account",
     () => payoutAccount.POST(jsonRequest("POST", "http://localhost/api/businesses/payout-account", { business_id: BIZ })),
+  ],
+  // Forwards to the operator-sms-alias Edge Function with the operator's own JWT.
+  [
+    "POST /api/sms/alias",
+    () => smsAlias.POST(jsonRequest("POST", "http://localhost/api/sms/alias", { action: "refresh", business_id: BIZ, alias_id: BIZ })),
   ],
 ]
 

@@ -49,7 +49,10 @@ export interface BusinessRow {
   } | null
   /** Immutable tenant key (storage folders). */
   slug: string
+  /** The APPROVED SMS alias (read-only mirror); managed on /sms. */
   sms_sender_name: string | null
+  /** Shown to customers who can't get an SMS code (falls back to phone). */
+  whatsapp_number: string | null
   email_from_name: string | null
   /** Where the new-order email goes (set_order_settings). */
   order_notification_email: string | null
