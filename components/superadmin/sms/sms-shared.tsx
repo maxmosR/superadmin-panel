@@ -42,6 +42,8 @@ export function aliasErrorText(
     case "other_environment":
     case "business_not_found":
     case "alias_not_found":
+    case "already_linked":
+    case "not_italian_alias":
       return e[j.error]
     case "openapi_error": {
       const detail = `${j.code ? ` (${j.code})` : ""}${j.message ? `: ${j.message}` : ""}`

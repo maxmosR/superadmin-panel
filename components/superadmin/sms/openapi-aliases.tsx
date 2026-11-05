@@ -2,12 +2,13 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react"
+import { Link2, Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useI18n } from "@/lib/i18n/client"
 import { fmt as fill } from "@/lib/i18n/core"
@@ -35,6 +36,14 @@ type PatchField = "pec" | "companyWebsite" | "industry" | "senderCompanyRelation
 const PATCH_FIELDS: PatchField[] = ["pec", "companyWebsite", "industry", "senderCompanyRelationship"]
 const MAX_LEN: Record<PatchField, number> = { pec: 65, companyWebsite: 200, industry: 50, senderCompanyRelationship: 60 }
 
+/** A restaurant to link an alias to (from GET /api/sms). */
+interface Restaurant {
+  business_id: string
+  business_name: string
+  alias: { state: AliasState } | null
+}
+
+const isLive = (s: AliasState | null | undefined) => !!s && s !== "DELETED" && s !== "REJECTED"
 const canChange = (s: AliasState | null) => s === "PATCH_REQUIRED"
 const canDelete = (s: AliasState | null) => s === "APPROVED" || s === "PATCH_REQUIRED"
 
@@ -94,6 +103,9 @@ export function OpenApiAliases({ adminEmail = null }: { adminEmail?: string | nu
   const [busy, setBusy] = useState<string | null>(null)
   const [open, setOpen] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
+  const [linking, setLinking] = useState<string | null>(null)
+  const [restaurants, setRestaurants] = useState<Restaurant[] | null>(null)
+  const [pick, setPick] = useState("")
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const o = t.sms.openapi
@@ -131,6 +143,54 @@ export function OpenApiAliases({ adminEmail = null }: { adminEmail?: string | nu
     else {
       setNotice(action === "delete" ? o.doneDeleted : o.donePatched)
       setEditing(null)
+    }
+    await load()
+    setBusy(null)
+  }
+
+  const startLink = async (key: string) => {
+    setOpen(key)
+    setEditing(null)
+    setPick("")
+    setLinking(linking === key ? null : key)
+    if (restaurants) return
+    const res = await fetch("/api/sms", { cache: "no-store" })
+    const j = await res.json().catch(() => ({}))
+    if (res.ok) setRestaurants(j.businesses ?? [])
+    else setError(j.error || t.sms.loadFailed)
+  }
+
+  // Confirms in plain words what linking does, then records it (nothing goes to OpenAPI).
+  const askLink = async (alias: OpenApiAlias) => {
+    const r = restaurants?.find((x) => x.business_id === pick)
+    if (!alias.id || !r) return
+    const vars = { sender: alias.sender ?? alias.id, restaurant: r.business_name }
+    const effect = alias.state === "APPROVED" ? o.linkApprovedNow : isLive(alias.state) ? o.linkNotYet : o.linkHistory
+    const ok = await confirm({
+      title: fmt(o.linkConfirmTitle, vars),
+      description: (
+        <div className="space-y-2 text-sm">
+          <p className={alias.state === "APPROVED" ? "font-medium" : undefined}>{fmt(effect, vars)}</p>
+          <p className="text-muted-foreground">{o.linkNothingAtOpenapi}</p>
+        </div>
+      ),
+      confirmLabel: o.linkSubmit,
+    })
+    if (!ok) return
+    setBusy(`link:${alias.id}`)
+    setError("")
+    setNotice("")
+    const res = await fetch("/api/sms/openapi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "link", openapi_id: alias.id, business_id: r.business_id }),
+    })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) setError(aliasErrorText(t, fmt, j))
+    else {
+      setNotice(fmt(o.linkDone, { restaurant: r.business_name }))
+      setLinking(null)
+      setRestaurants(null)
     }
     await load()
     setBusy(null)
@@ -257,6 +317,12 @@ export function OpenApiAliases({ adminEmail = null }: { adminEmail?: string | nu
                                 <Button variant="ghost" size="sm" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : key)}>
                                   {expanded ? o.hide : o.details}
                                 </Button>
+                                {!a.link && a.id && (
+                                  <Button variant="default" size="sm" disabled={!!busy} onClick={() => void startLink(key)}>
+                                    <Link2 className="h-4 w-4" aria-hidden />
+                                    {o.linkAction}
+                                  </Button>
+                                )}
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -264,6 +330,7 @@ export function OpenApiAliases({ adminEmail = null }: { adminEmail?: string | nu
                                   title={canChange(a.state) ? undefined : o.changeOnlyPatch}
                                   onClick={() => {
                                     setOpen(key)
+                                    setLinking(null)
                                     setEditing(editing === key ? null : key)
                                   }}
                                 >
@@ -323,6 +390,43 @@ export function OpenApiAliases({ adminEmail = null }: { adminEmail?: string | nu
                                   </div>
                                   {!canChange(a.state) && <p className="text-xs text-muted-foreground">{o.changeOnlyPatch}</p>}
                                   {!canDelete(a.state) && <p className="text-xs text-muted-foreground">{o.deleteOnly}</p>}
+                                  {linking === key && !a.link && (
+                                    <div className="space-y-2 border-t pt-3">
+                                      <p className="font-medium">{fmt(o.linkTitle, { sender: a.sender ?? a.id ?? "" })}</p>
+                                      {!restaurants ? (
+                                        <p className="flex items-center gap-2 text-muted-foreground">
+                                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                          {o.linkLoading}
+                                        </p>
+                                      ) : (
+                                        <div className="flex flex-wrap items-end gap-2">
+                                          <div className="min-w-64 space-y-1">
+                                            <Label htmlFor={`oa-link-${key}`}>{o.linkPick}</Label>
+                                            <Select value={pick} onValueChange={setPick}>
+                                              <SelectTrigger id={`oa-link-${key}`} className="w-full">
+                                                <SelectValue placeholder={o.linkPlaceholder} />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                {restaurants.map((r) => {
+                                                  // A live alias can't join a restaurant that already has one.
+                                                  const blocked = isLive(a.state) && isLive(r.alias?.state)
+                                                  return (
+                                                    <SelectItem key={r.business_id} value={r.business_id} disabled={blocked}>
+                                                      {blocked ? fmt(o.linkHasAlias, { name: r.business_name }) : r.business_name}
+                                                    </SelectItem>
+                                                  )
+                                                })}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                          <Button disabled={!pick || !!busy} onClick={() => void askLink(a)}>
+                                            {busy === `link:${a.id}` && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+                                            {o.linkSubmit}
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                   {editing === key && canChange(a.state) && (
                                     <div className="space-y-2 border-t pt-3">
                                       <p className="font-medium">{o.changeTitle}</p>
