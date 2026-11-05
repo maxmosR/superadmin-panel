@@ -60,7 +60,15 @@ export function SmsOverview({ adminEmail = null }: { adminEmail?: string | null 
 
   return (
     <ConsoleShell adminEmail={adminEmail}>
-      <PageHead title={t.sms.title} description={t.sms.description} />
+      <PageHead
+        title={t.sms.title}
+        description={t.sms.description}
+        action={
+          <Button asChild variant="outline">
+            <Link href="/sms/openapi">{t.sms.openapi.link}</Link>
+          </Button>
+        }
+      />
 
       {error && (
         <Alert variant="destructive" className="mb-4">

@@ -35,6 +35,7 @@ import * as zonesVersion from "@/app/api/zones/version/route"
 import * as sms from "@/app/api/sms/route"
 import * as smsBusiness from "@/app/api/sms/business/route"
 import * as smsAlias from "@/app/api/sms/alias/route"
+import * as smsOpenapi from "@/app/api/sms/openapi/route"
 
 const lookup = vi.mocked(lookupOperator)
 const adminClient = vi.mocked(createAdminClient)
@@ -229,6 +230,12 @@ const allHandlers: Array<[string, () => Promise<Response>]> = [
   [
     "POST /api/sms/alias",
     () => smsAlias.POST(jsonRequest("POST", "http://localhost/api/sms/alias", { action: "refresh", business_id: BIZ, alias_id: BIZ })),
+  ],
+  // The OpenAPI account's aliases: also forwarded to operator-sms-alias.
+  ["GET /api/sms/openapi", () => smsOpenapi.GET()],
+  [
+    "POST /api/sms/openapi",
+    () => smsOpenapi.POST(jsonRequest("POST", "http://localhost/api/sms/openapi", { action: "delete", openapi_id: "s1" })),
   ],
 ]
 

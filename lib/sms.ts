@@ -143,3 +143,17 @@ export function isMissingSmsSchema(e: { code?: string; message?: string } | null
 
 export const MISSING_SMS_SCHEMA_ERROR =
   "This database doesn't have the SMS sender migration yet (20261104120000_sms_sender_aliases). It arrives with the next backend deploy."
+
+/**
+ * What removing an alias deletes, by state (same rule as the Edge Function's
+ * removalAtOpenApi). The environment is only known server-side: an alias of
+ * the other environment is never deleted at OpenAPI, and the answer says so.
+ *   deleted  Approved / Needs correction: deleted at OpenAPI too
+ *   kept     In review / Deleting: OpenAPI refuses, it stays on the account
+ *   none     Rejected / Deleted: nothing left at OpenAPI
+ */
+export function removalPlan(state: AliasState): "deleted" | "kept" | "none" {
+  if (state === "REJECTED" || state === "DELETED") return "none"
+  if (state === "APPROVED" || state === "PATCH_REQUIRED") return "deleted"
+  return "kept"
+}

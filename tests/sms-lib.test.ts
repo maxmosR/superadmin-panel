@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { currentAlias, maskPhone, nextDay, purposeLabel, rangeFromParams, romeDayStart, romeMonthStartDay } from "@/lib/sms"
+import { currentAlias, maskPhone, removalPlan, nextDay, purposeLabel, rangeFromParams, romeDayStart, romeMonthStartDay } from "@/lib/sms"
 import { parseWhatsapp } from "@/lib/roles"
 
 describe("SMS screen helpers", () => {
@@ -39,5 +39,14 @@ describe("SMS screen helpers", () => {
     expect(parseWhatsapp(null)).toBeNull()
     expect(parseWhatsapp("3331234567")).toBeUndefined()
     expect(parseWhatsapp(42)).toBeUndefined()
+  })
+
+  it("says what removing an alias deletes at OpenAPI, by state", () => {
+    expect(removalPlan("APPROVED")).toBe("deleted")
+    expect(removalPlan("PATCH_REQUIRED")).toBe("deleted")
+    expect(removalPlan("PENDING")).toBe("kept")
+    expect(removalPlan("DELETING")).toBe("kept")
+    expect(removalPlan("REJECTED")).toBe("none")
+    expect(removalPlan("DELETED")).toBe("none")
   })
 })

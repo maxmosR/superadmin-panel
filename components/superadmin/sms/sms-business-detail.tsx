@@ -14,6 +14,7 @@ import type { Messages } from "@/lib/i18n/messages"
 import {
   currentAlias,
   formatEuro,
+  removalPlan,
   romeMonthStartDay,
   romeToday,
   type SmsAlias,
@@ -158,7 +159,7 @@ export function SmsBusinessDetail({ businessId, adminEmail = null }: { businessI
     void load()
   }, [load])
 
-  const act = async (action: "create" | "refresh" | "patch" | "delete", extra: Record<string, unknown> = {}) => {
+  const act = async (action: "create" | "refresh" | "patch" | "remove", extra: Record<string, unknown> = {}) => {
     setBusy(action)
     setError("")
     setNotice("")
@@ -179,13 +180,56 @@ export function SmsBusinessDetail({ businessId, adminEmail = null }: { businessI
             : d.createdPending
           : action === "patch"
             ? d.patched
-            : action === "delete"
-              ? d.deleted
+            : action === "remove"
+              ? j.openapi === "deleted"
+                ? d.removedDeleted
+                : j.openapi === "kept"
+                  ? fmt(d.removedKept, { reason: d.keptReasons[j.reason as string] ?? j.reason })
+                  : d.removedNone
               : d.refreshed,
       )
     }
     await load()
     setBusy(null)
+  }
+
+  // Says, before anything happens, what deleting this alias removes and what stays.
+  const askRemove = async (target: SmsAlias) => {
+    const plan = removalPlan(target.state)
+    const deleted = [a.removeRecord, ...(plan === "deleted" ? [a.removeAtOpenapi] : [])]
+    const kept = [
+      ...(plan === "kept" ? [target.state === "DELETING" ? a.removeKeptDeleting : a.removeKeptReview] : []),
+      ...(plan === "none" ? [a.removeNoneAtOpenapi] : []),
+      a.removeKeptLog,
+    ]
+    const ok = await confirm({
+      title: fmt(a.removeTitle, { sender: target.sender }),
+      description: (
+        <div className="space-y-3 text-sm">
+          {target.state === "APPROVED" && <p className="font-medium text-destructive">{a.removeStopsCodes}</p>}
+          <div>
+            <p className="font-medium">{a.removeDeleted}</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5">
+              {deleted.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="font-medium">{a.removeKept}</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5">
+              {kept.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+          <p className="text-xs text-muted-foreground">{a.removeOtherEnv}</p>
+        </div>
+      ),
+      confirmLabel: a.remove,
+      destructive: true,
+    })
+    if (ok) void act("remove", { alias_id: target.id })
   }
 
   const alias = detail ? currentAlias(detail.aliases) : null
@@ -288,30 +332,19 @@ export function SmsBusinessDetail({ businessId, adminEmail = null }: { businessI
                   </div>
                 )}
 
-                {live && (
+                {alias && (
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={() => void act("refresh", { alias_id: live.id })} disabled={!!busy}>
-                      {busy === "refresh" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
-                      {a.refresh}
-                    </Button>
-                    {(live.state === "APPROVED" || live.state === "PATCH_REQUIRED") && (
-                      <Button
-                        variant="destructive"
-                        disabled={!!busy}
-                        onClick={async () => {
-                          const ok = await confirm({
-                            title: fmt(a.deleteTitle, { sender: live.sender }),
-                            description: a.deleteBody,
-                            confirmLabel: a.delete,
-                            destructive: true,
-                          })
-                          if (ok) void act("delete", { alias_id: live.id })
-                        }}
-                      >
-                        {busy === "delete" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}
-                        {a.delete}
+                    {live && (
+                      <Button variant="outline" onClick={() => void act("refresh", { alias_id: live.id })} disabled={!!busy}>
+                        {busy === "refresh" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
+                        {a.refresh}
                       </Button>
                     )}
+                    {/* Any state: the dialog says what is deleted and what is kept. */}
+                    <Button variant="destructive" disabled={!!busy} onClick={() => void askRemove(alias)}>
+                      {busy === "remove" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}
+                      {a.remove}
+                    </Button>
                   </div>
                 )}
 
@@ -355,6 +388,10 @@ export function SmsBusinessDetail({ businessId, adminEmail = null }: { businessI
                             {h.environment} · {formatDateTime(h.updated_at, locale)}
                             {h.reject_reason ? ` · ${h.reject_reason}` : ""}
                           </span>
+                          <Button variant="ghost" size="sm" className="text-destructive" disabled={!!busy} onClick={() => void askRemove(h)}>
+                            <Trash2 className="h-4 w-4" aria-hidden />
+                            {a.remove}
+                          </Button>
                         </li>
                       ))}
                     </ul>
