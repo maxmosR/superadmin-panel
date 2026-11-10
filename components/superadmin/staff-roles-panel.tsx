@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { Loader2, Mail, Plus, Trash2 } from "lucide-react"
+import { StaffEmailDialog } from "./staff-email-dialog"
 import { useConfirm } from "./confirm-dialog"
 import { useUndoToast } from "./undo-toast"
 import { useI18n } from "@/lib/i18n/client"
@@ -55,6 +56,7 @@ export function StaffRolesPanel({
   const [identifier, setIdentifier] = useState("")
   // A new person starts as staff: owner is the most powerful role, chosen on purpose.
   const [role, setRole] = useState<Role>("worker")
+  const [emailFor, setEmailFor] = useState<Member | null>(null)
 
   // Latest strings for the loader, so switching language doesn't refetch.
   const tRef = useRef(t)
@@ -170,6 +172,17 @@ export function StaffRolesPanel({
                   type="button"
                   variant="ghost"
                   size="sm"
+                  aria-label={fmt(t.staff.changeEmailLabel, { who: who(m) })}
+                  title={t.staff.changeEmail}
+                  disabled={saving}
+                  onClick={() => setEmailFor(m)}
+                >
+                  <Mail className="h-4 w-4" aria-hidden />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
                   aria-label={fmt(t.staff.removeLabel, { who: who(m) })}
                   title={t.common.remove}
                   disabled={saving}
@@ -224,6 +237,20 @@ export function StaffRolesPanel({
         {status}
       </p>
       {dialog}
+      {emailFor && (
+        <StaffEmailDialog
+          open
+          onOpenChange={(open) => !open && setEmailFor(null)}
+          businessId={businessId}
+          userId={emailFor.user_id}
+          who={who(emailFor)}
+          maskedEmail={emailFor.email}
+          onChanged={() => {
+            void load()
+            setStatus(t.staff.emailChanged)
+          }}
+        />
+      )}
     </div>
   )
 }

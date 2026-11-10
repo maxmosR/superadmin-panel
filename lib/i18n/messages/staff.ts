@@ -26,6 +26,16 @@ export const en = {
   addPlaceholder: "Phone or email",
   newRole: "Role for the new person",
   roleChangedMsg: "{who} is now {role}.",
+  changeEmail: "Change sign-in email",
+  changeEmailLabel: "Change the sign-in email of {who}",
+  emailTitle: "Change the sign-in email of {who}",
+  emailBody: "Their next sign-in code goes to the new address. It is their one account, so it changes for every restaurant they work at and for ordering too.",
+  emailCurrent: "Current: {email}",
+  emailNew: "New email",
+  emailSave: "Change email",
+  emailChanged: "Sign-in email changed.",
+  emailTaken: "Another account already uses this email.",
+  invalidEmail: "Enter a valid email.",
 }
 
 export const it: typeof en = {
@@ -55,4 +65,14 @@ export const it: typeof en = {
   addPlaceholder: "Telefono o email",
   newRole: "Ruolo della nuova persona",
   roleChangedMsg: "{who} ora è {role}.",
+  changeEmail: "Cambia email di accesso",
+  changeEmailLabel: "Cambia l'email di accesso di {who}",
+  emailTitle: "Cambia l'email di accesso di {who}",
+  emailBody: "Il prossimo codice di accesso arriverà al nuovo indirizzo. È il suo unico account: cambia per tutti i ristoranti in cui lavora e anche per gli ordini.",
+  emailCurrent: "Attuale: {email}",
+  emailNew: "Nuova email",
+  emailSave: "Cambia email",
+  emailChanged: "Email di accesso cambiata.",
+  emailTaken: "Questa email è già usata da un altro account.",
+  invalidEmail: "Inserisci un'email valida.",
 }

@@ -42,6 +42,10 @@ export const en = {
   openSite: "Open the ordering site",
   copyOwnerLink: "Copy the owner's sign-in link",
   copied: "Link copied",
+  adminPanel: "Admin panel",
+  adminPanelHint: "You sign in there as an operator, with owner rights.",
+  adminPanelNone: "No active domain yet. Add one under Domains to open the admin panel.",
+  openAdminPanel: "Open the admin panel at {host}",
 }
 
 export const it: typeof en = {
@@ -87,4 +91,8 @@ export const it: typeof en = {
   openSite: "Apri il sito per gli ordini",
   copyOwnerLink: "Copia il link di accesso per il titolare",
   copied: "Link copiato",
+  adminPanel: "Pannello del ristorante",
+  adminPanelHint: "Accedi come operatore, con i permessi da titolare.",
+  adminPanelNone: "Nessun dominio attivo. Aggiungine uno in Domini per aprire il pannello.",
+  openAdminPanel: "Apri il pannello su {host}",
 }

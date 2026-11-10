@@ -23,6 +23,7 @@ import * as businessProviders from "@/app/api/businesses/providers/route"
 import * as roles from "@/app/api/businesses/roles/route"
 import * as payoutAccount from "@/app/api/businesses/payout-account/route"
 import * as orderSettings from "@/app/api/businesses/order-settings/route"
+import * as staffEmail from "@/app/api/businesses/staff-email/route"
 import * as operators from "@/app/api/operators/route"
 import * as adminNav from "@/app/api/admin-nav/route"
 import * as zones from "@/app/api/zones/route"
@@ -154,6 +155,17 @@ adminHandlers.push(
     () => roles.DELETE(jsonRequest("DELETE", "http://localhost/api/businesses/roles", { business_id: BIZ, user_id: USER })),
   ],
   ["GET /api/operators", () => operators.GET()],
+  [
+    "PUT /api/businesses/staff-email",
+    () =>
+      staffEmail.PUT(
+        jsonRequest("PUT", "http://localhost/api/businesses/staff-email", {
+          business_id: BIZ,
+          user_id: BIZ,
+          email: "owner@example.com",
+        }),
+      ),
+  ],
   [
     "PUT /api/businesses/order-settings",
     () =>

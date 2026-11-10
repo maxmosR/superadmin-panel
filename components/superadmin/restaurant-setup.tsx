@@ -14,7 +14,7 @@ import { useI18n } from "@/lib/i18n/client"
 import { apiError } from "@/lib/i18n/api-error"
 import type { Messages } from "@/lib/i18n/messages"
 import { cn } from "@/lib/utils"
-import { domainDisplayHost } from "@/lib/domains"
+import { adminPanelHosts, domainDisplayHost, hostUrl } from "@/lib/domains"
 import { ConsoleShell, PageHead } from "./console-shell"
 import { SetupChecklist, SetupSummary } from "./setup-status"
 import { DomainManager } from "./domain-manager"
@@ -298,6 +298,7 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
         </nav>
 
         <div className="min-w-0 space-y-6">
+          <AdminPanelLinks row={row} rootDomain={rootDomain} />
           {/* Phones and tablets: the full checklist folds into the same box (the side menu is hidden there). */}
           {readiness.ready ? (
             <>
@@ -686,6 +687,30 @@ function ReadyPanel({ row, rootDomain }: { row: BusinessRow; rootDomain: string 
           {copied ? t.setup.copied : ""}
         </span>
       </div>
+    </section>
+  )
+}
+
+/** Opens the restaurant's admin panel, where the operator counts as owner. */
+function AdminPanelLinks({ row, rootDomain }: { row: BusinessRow; rootDomain: string }) {
+  const { t, fmt } = useI18n()
+  const hosts = adminPanelHosts(row.domains, rootDomain)
+  return (
+    <section aria-labelledby="admin-panel-title" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-4">
+      <div className="min-w-0 flex-1">
+        <h2 id="admin-panel-title" className="text-sm font-semibold">
+          {t.setup.adminPanel}
+        </h2>
+        <p className="text-xs text-muted-foreground">{hosts.length ? t.setup.adminPanelHint : t.setup.adminPanelNone}</p>
+      </div>
+      {hosts.map((host) => (
+        <Button key={host} variant="outline" size="sm" asChild>
+          <a href={hostUrl(host, "/dashboard")} target="_blank" rel="noreferrer" aria-label={fmt(t.setup.openAdminPanel, { host })}>
+            <ExternalLink className="h-4 w-4" aria-hidden />
+            <span className="font-mono">{host}</span>
+          </a>
+        </Button>
+      ))}
     </section>
   )
 }

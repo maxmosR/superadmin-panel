@@ -57,3 +57,21 @@ export function domainKind(domain: string): DomainKind {
 export function domainDisplayHost(domain: string, rootDomain: string): string {
   return domainKind(domain) === "label" ? `${domain}.${rootDomain}` : domain
 }
+
+/**
+ * The hosts a restaurant's admin panel likely answers on. Domains carry no
+ * "admin" flag, so admin hosts are recognised by name ("admin.acme.it",
+ * "acme-admin.vercel.app"); with none, every active host is offered.
+ */
+export function adminPanelHosts(
+  domains: { domain: string; is_active: boolean }[] | null | undefined,
+  rootDomain: string,
+): string[] {
+  const hosts = (domains ?? []).filter((d) => d.is_active).map((d) => domainDisplayHost(d.domain, rootDomain))
+  const admin = hosts.filter((h) => /(^|[.-])admin/.test(h))
+  return admin.length ? admin : hosts
+}
+
+export function hostUrl(host: string, path = ""): string {
+  return `${host.includes("localhost") ? "http" : "https"}://${host}${path}`
+}
