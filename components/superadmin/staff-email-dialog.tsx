@@ -58,7 +58,7 @@ export function StaffEmailDialog({
       if (!res.ok) {
         setError(
           j.error
-            ? apiError(t, j.error, res.status, { email_taken: t.staff.emailTaken, invalid_email: t.staff.invalidEmail })
+            ? apiError(t, j.error, res.status, { email_taken: t.staff.emailTaken, invalid_email: t.staff.invalidEmail, target_is_operator: t.staff.emailTargetOperator })
             : t.staff.saveFailed,
         )
         return

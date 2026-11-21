@@ -35,6 +35,7 @@ export const en = {
   emailSave: "Change email",
   emailChanged: "Sign-in email changed.",
   emailTaken: "Another account already uses this email.",
+  emailTargetOperator: "This person is a BirraOra operator: their email can't be changed from here.",
   invalidEmail: "Enter a valid email.",
 }
 
@@ -74,5 +75,6 @@ export const it: typeof en = {
   emailSave: "Cambia email",
   emailChanged: "Email di accesso cambiata.",
   emailTaken: "Questa email è già usata da un altro account.",
+  emailTargetOperator: "Questa persona è un operatore BirraOra: la sua email non si può cambiare da qui.",
   invalidEmail: "Inserisci un'email valida.",
 }

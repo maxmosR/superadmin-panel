@@ -42,8 +42,16 @@ export default function SuperAdminLoginPage() {
       // Confirm this account is actually a platform admin:
       // 401 unauthenticated / 403 not_operator both mean "not an operator".
       // Any other non-OK status means we couldn't verify: never treat it as success.
+      // 403 mfa_required: an operator who still needs their second factor.
       const res = await fetch("/api/me", { method: "GET" })
-      const check = operatorCheckFromStatus(res.status)
+      const body = res.ok ? null : await res.json().catch(() => null)
+      const check = operatorCheckFromStatus(res.status, body?.error)
+      if (check === "mfa_required") {
+        // The challenge page sends someone without a TOTP factor on to enrolment.
+        router.push("/mfa/challenge")
+        router.refresh()
+        return
+      }
       if (check !== "operator") {
         await supabase.auth.signOut()
         setError(check === "not_operator" ? t.login.notOperator : t.login.couldNotVerify)

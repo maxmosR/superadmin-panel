@@ -37,6 +37,8 @@ import * as sms from "@/app/api/sms/route"
 import * as smsBusiness from "@/app/api/sms/business/route"
 import * as smsAlias from "@/app/api/sms/alias/route"
 import * as smsOpenapi from "@/app/api/sms/openapi/route"
+import * as fiscalSettings from "@/app/api/businesses/fiscal-settings/route"
+import * as orderDevices from "@/app/api/businesses/order-devices/route"
 
 const lookup = vi.mocked(lookupOperator)
 const adminClient = vi.mocked(createAdminClient)
@@ -229,6 +231,25 @@ adminHandlers.push(
   ["GET /api/sms/business", () => smsBusiness.GET(new Request(`http://localhost/api/sms/business?business_id=${BIZ}`))],
 )
 
+// Receipts fiscal id and order-receiver devices.
+adminHandlers.push(
+  ["GET /api/businesses/fiscal-settings", () => fiscalSettings.GET(new Request(`http://localhost/api/businesses/fiscal-settings?business_id=${BIZ}`))],
+  [
+    "PUT /api/businesses/fiscal-settings",
+    () =>
+      fiscalSettings.PUT(jsonRequest("PUT", "http://localhost/api/businesses/fiscal-settings", { business_id: BIZ, fiscal_id: "01234567897" })),
+  ],
+  ["GET /api/businesses/order-devices", () => orderDevices.GET(new Request(`http://localhost/api/businesses/order-devices?business_id=${BIZ}`))],
+  [
+    "POST /api/businesses/order-devices",
+    () => orderDevices.POST(jsonRequest("POST", "http://localhost/api/businesses/order-devices", { business_id: BIZ, label: "Kitchen" })),
+  ],
+  [
+    "PATCH /api/businesses/order-devices",
+    () => orderDevices.PATCH(jsonRequest("PATCH", "http://localhost/api/businesses/order-devices", { business_id: BIZ, device_id: USER })),
+  ],
+)
+
 const allHandlers: Array<[string, () => Promise<Response>]> = [
   ...adminHandlers,
   ["GET /api/me", () => me.GET()],
@@ -293,6 +314,14 @@ describe("operator guard on every API handler", () => {
       expect(adminClient).not.toHaveBeenCalled()
     })
 
+    it("returns 403 mfa_required for an operator without a second factor (AAL1), no service-role client", async () => {
+      lookup.mockResolvedValue({ status: "mfa_required", admin: { userId: "u1", email: "op@example.com" }, hasTotp: true })
+      const res = await call()
+      expect(res.status).toBe(403)
+      expect(await res.json()).toEqual({ error: "mfa_required" })
+      expect(adminClient).not.toHaveBeenCalled()
+    })
+
     it("returns 403 not_operator for a signed-in non-operator, no service-role client", async () => {
       lookup.mockResolvedValue({ status: "not_operator" })
       const res = await call()
@@ -315,6 +344,16 @@ describe("operator guard on every API handler", () => {
     const res = await businesses.GET(new Request("http://localhost/api/businesses?business_id=nope"))
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: "invalid_business_id" })
+    expect(adminClient).not.toHaveBeenCalled()
+  })
+
+  it("PUT /api/businesses/fiscal-settings refuses a malformed fiscal id before the service-role client", async () => {
+    lookup.mockResolvedValue({ status: "operator", admin: { userId: "u1", email: "op@example.com" } })
+    const res = await fiscalSettings.PUT(
+      jsonRequest("PUT", "http://localhost/api/businesses/fiscal-settings", { business_id: BIZ, fiscal_id: "01234567890" }),
+    )
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: "invalid_fiscal_id" })
     expect(adminClient).not.toHaveBeenCalled()
   })
 

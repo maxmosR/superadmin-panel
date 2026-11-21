@@ -6,6 +6,7 @@ vi.mock("@/lib/require-operator", () => ({
 
 const state = {
   role: { role: "owner" } as { role: string } | null,
+  targetAdmin: null as { user_id: string } | null,
   currentEmail: "old@example.com",
   taken: [] as Array<{ user_id: string }>,
   updateError: null as { status?: number; message?: string } | null,
@@ -19,6 +20,7 @@ vi.mock("@/lib/supabase-admin", () => ({
       const chain = () => q
       Object.assign(q, { select: chain, eq: chain, neq: chain })
       if (table === "user_roles") q.maybeSingle = async () => ({ data: state.role, error: null })
+      if (table === "platform_admins") q.maybeSingle = async () => ({ data: state.targetAdmin, error: null })
       if (table === "profiles") q.limit = async () => ({ data: state.taken, error: null })
       return q
     },
@@ -43,6 +45,7 @@ const put = (body: unknown) =>
 
 beforeEach(() => {
   state.role = { role: "owner" }
+  state.targetAdmin = null
   state.currentEmail = "old@example.com"
   state.taken = []
   state.updateError = null
@@ -68,6 +71,20 @@ describe("PUT /api/businesses/staff-email", () => {
     const res = await put({ business_id: BIZ, user_id: USER, email: "new@example.com" })
     expect(res.status).toBe(404)
     expect(state.updates).toHaveLength(0)
+  })
+
+  it("refuses to change another platform admin's email, logging ids only", async () => {
+    state.targetAdmin = { user_id: USER }
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const res = await put({ business_id: BIZ, user_id: USER, email: "attacker@example.com" })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: "target_is_operator" })
+    expect(state.updates).toHaveLength(0)
+    const logged = JSON.stringify(warn.mock.calls)
+    expect(logged).toContain(USER)
+    expect(logged).not.toContain("attacker@example.com")
+    expect(logged).not.toContain("old@example.com")
+    warn.mockRestore()
   })
 
   it("refuses an email another account uses", async () => {

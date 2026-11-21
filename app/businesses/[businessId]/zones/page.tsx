@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation"
 import { lookupOperator } from "@/lib/superadmin-auth"
+import { redirectPathFor } from "@/lib/operator-status"
 import { isUuid } from "@/lib/zones/validate"
 import { restaurantTitle } from "@/lib/i18n/page-title"
 import { ZonesEditor } from "@/components/superadmin/zones/zones-editor"
@@ -13,7 +14,7 @@ export async function generateMetadata({ params }: { params: Promise<{ businessI
 export default async function DeliveryZonesPage({ params }: { params: Promise<{ businessId: string }> }) {
   // The page checks the operator itself; proxy.ts is only a convenience.
   const result = await lookupOperator()
-  if (result.status !== "operator") redirect("/login")
+  if (result.status !== "operator") redirect(redirectPathFor(result))
   const { businessId } = await params
   if (!isUuid(businessId)) notFound()
   return <ZonesEditor businessId={businessId} />

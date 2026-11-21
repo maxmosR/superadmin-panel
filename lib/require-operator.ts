@@ -10,8 +10,10 @@ export type RequireOperatorResult =
  *
  * Call it first, before reading the body and before creating any service-role
  * client. It answers on its own, independent of `proxy.ts`:
- * - no session                     → 401 { error: "unauthenticated" }
- * - signed in, not an operator     → 403 { error: "not_operator" }
+ * - no session                          → 401 { error: "unauthenticated" }
+ * - signed in, not an operator          → 403 { error: "not_operator" }
+ * - operator without a second factor    → 403 { error: "mfa_required" }
+ *   (session not AAL2: enrol or verify TOTP at /mfa/…)
  *
  * Usage:
  *   const guard = await requireOperator()
@@ -25,6 +27,8 @@ export async function requireOperator(): Promise<RequireOperatorResult> {
       return { admin: result.admin }
     case "unauthenticated":
       return { response: NextResponse.json({ error: "unauthenticated" }, { status: 401 }) }
+    case "mfa_required":
+      return { response: NextResponse.json({ error: "mfa_required" }, { status: 403 }) }
     default:
       return { response: NextResponse.json({ error: "not_operator" }, { status: 403 }) }
   }

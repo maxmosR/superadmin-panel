@@ -10,7 +10,9 @@ export function apiError(t: Messages, code: unknown, status?: number, extra?: Re
   const c = typeof code === "string" ? code : ""
   if (c && extra?.[c]) return extra[c]
   if (c === "unauthenticated" || status === 401) return t.common.unauthenticated
-  if (c === "not_operator" || status === 403) return t.common.notOperator
+  if (c === "mfa_required") return t.common.mfaRequired
+  if (c === "bad_origin") return t.common.badOrigin
+  if (c === "not_operator" || (status === 403 && !c)) return t.common.notOperator
   if (c === "not_found" || c === "business_not_found") return t.common.notFound
   if (c) return c
   return status ? fmt(t.common.requestFailed, { status }) : t.common.network

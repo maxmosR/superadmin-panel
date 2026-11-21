@@ -4,7 +4,8 @@
 // sign-in identity (admin panel, storefront, every restaurant), so it must
 // not belong to another account. Set confirmed: the operator vouches for it,
 // and the next code goes to the new address. profiles.email follows through
-// the on_auth_user_updated_profile trigger.
+// the on_auth_user_updated_profile trigger. A platform admin's email is
+// refused (403 target_is_operator). Logs carry ids only.
 import { NextResponse } from "next/server"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
@@ -33,6 +34,21 @@ export async function PUT(request: Request) {
     .maybeSingle()
   if (roleError) return NextResponse.json({ error: "lookup_failed" }, { status: 500 })
   if (!role) return NextResponse.json({ error: "not_found" }, { status: 404 })
+
+  // Another operator's identity (active or not) is never changed from here:
+  // it would hand their console sign-in to whoever owns the new address.
+  const { data: targetAdmin, error: adminError } = await admin
+    .from("platform_admins")
+    .select("user_id")
+    .eq("user_id", b.user_id)
+    .maybeSingle()
+  if (adminError) return NextResponse.json({ error: "lookup_failed" }, { status: 500 })
+  if (targetAdmin) {
+    console.warn(
+      JSON.stringify({ event: "operator_staff_email_refused", reason: "target_is_operator", operator: guard.admin.userId, business: b.business_id, user: b.user_id }),
+    )
+    return NextResponse.json({ error: "target_is_operator" }, { status: 403 })
+  }
 
   const { data: current, error: getError } = await admin.auth.admin.getUserById(b.user_id)
   if (getError || !current?.user) return NextResponse.json({ error: "not_found" }, { status: 404 })

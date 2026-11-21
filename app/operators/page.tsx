@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { lookupOperator } from "@/lib/superadmin-auth"
+import { redirectPathFor } from "@/lib/operator-status"
 import { pageTitle } from "@/lib/i18n/page-title"
 import { OperatorsManager } from "@/components/superadmin/operators-manager"
 
@@ -10,6 +11,6 @@ export const generateMetadata = () => pageTitle((t) => t.shell.nav.operators)
 export default async function OperatorsPage() {
   // The page checks the operator itself; proxy.ts is only a convenience.
   const result = await lookupOperator()
-  if (result.status !== "operator") redirect("/login")
+  if (result.status !== "operator") redirect(redirectPathFor(result))
   return <OperatorsManager adminEmail={result.admin.email} />
 }
