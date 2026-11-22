@@ -1,8 +1,12 @@
 // Platform operators.
 //   GET                          every platform_admins row
 //   PATCH { user_id, is_active }  activate / deactivate an operator
-// The last active operator can't be deactivated (nobody could undo it).
+// The last active operator can't be deactivated (nobody could undo it), and
+// nobody deactivates themselves (409 cannot_deactivate_self: another operator
+// must). Every change is audited first (record_audit, ids only); without the
+// audit row nothing is changed (500 audit_failed).
 import { NextResponse } from "next/server"
+import { recordOperatorAudit } from "@/lib/operator-audit"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 
@@ -30,6 +34,11 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 })
   }
 
+  const targetUserId = body.user_id.toLowerCase()
+  if (!body.is_active && targetUserId === guard.admin.userId.toLowerCase()) {
+    return NextResponse.json({ error: "cannot_deactivate_self" }, { status: 409 })
+  }
+
   const supabase = createAdminClient()
   if (!body.is_active) {
     const { data: active, error } = await supabase.from("platform_admins").select("user_id").eq("is_active", true)
@@ -38,13 +47,24 @@ export async function PATCH(request: Request) {
     if (remaining.length === 0) return NextResponse.json({ error: "last_operator" }, { status: 409 })
   }
 
+  const audit = await recordOperatorAudit(supabase, {
+    action: body.is_active ? "operator_activated" : "operator_deactivated",
+    actorUserId: guard.admin.userId,
+    subjectUserId: body.user_id,
+  })
+  if (!audit.ok) return NextResponse.json({ error: "audit_failed" }, { status: 500 })
+
   const { data, error } = await supabase
     .from("platform_admins")
     .update({ is_active: body.is_active })
     .eq("user_id", body.user_id)
     .select("user_id, is_active")
     .maybeSingle()
-  if (error) return NextResponse.json({ error: "update_failed" }, { status: 500 })
-  if (!data) return NextResponse.json({ error: "not_found" }, { status: 404 })
+  if (error || !data) {
+    // The audit row stays (an attempt); this links it to the outcome.
+    console.error(JSON.stringify({ event: "operator_active_update_failed", audit: audit.id, code: error?.code ?? null, found: !!data }))
+    if (error) return NextResponse.json({ error: "update_failed" }, { status: 500 })
+    return NextResponse.json({ error: "not_found" }, { status: 404 })
+  }
   return NextResponse.json({ ok: true, operator: data })
 }

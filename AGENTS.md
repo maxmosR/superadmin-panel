@@ -19,7 +19,8 @@ Platform console for the operator: it creates and manages restaurants (`business
 - **Receipts fiscal id** (`GET/PUT /api/businesses/fiscal-settings`): the restaurant's own P.IVA (11 digits, check digit) or codice fiscale (16 characters, check letter), upper-case (`lib/fiscal-id.ts`), written to `business_fiscal_settings` with the service role. Never log the value.
 - **Order-receiver devices** (`/api/businesses/order-devices`): `POST` creates a one-time pairing code (`create_order_device_pairing`, 15 minutes, shown once, never logged), `GET` lists `order_devices` (never `key_hash`), `PATCH` revokes (`revoked_at`).
 - The sign-in email of a platform admin is never changed through `staff-email` (`403 target_is_operator`).
-- The last active operator can't be deactivated (`/api/operators`, `409 last_operator`).
+- The last active operator can't be deactivated (`/api/operators`, `409 last_operator`), and nobody deactivates themselves (`409 cannot_deactivate_self`).
+- **Audit:** operator (de)activation and staff sign-in email changes write `record_audit` (`personal_data_audit_log`, ids only) through `recordOperatorAudit()` (`lib/operator-audit.ts`) before the change; if the audit write fails, nothing changes (`500 audit_failed`). Role changes are audited by `set_role_assignment` itself (`user_role_events`).
 - Dependencies are exact versions, one npm lockfile (`npm ci`). Don't add `^`, `~` or `latest`. Don't enable `cacheComponents` or drop the `force-dynamic` exports.
 
 ## Payments

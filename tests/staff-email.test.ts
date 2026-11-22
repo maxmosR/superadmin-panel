@@ -11,10 +11,18 @@ const state = {
   taken: [] as Array<{ user_id: string }>,
   updateError: null as { status?: number; message?: string } | null,
   updates: [] as Array<{ id: string; attrs: Record<string, unknown> }>,
+  audits: [] as Array<{ fn: string; args: Record<string, unknown> }>,
+  auditError: null as { code: string; message: string } | null,
+  order: [] as string[],
 }
 
 vi.mock("@/lib/supabase-admin", () => ({
   createAdminClient: () => ({
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      state.order.push("audit")
+      state.audits.push({ fn, args })
+      return state.auditError ? { data: null, error: state.auditError } : { data: "audit-row-1", error: null }
+    },
     from: (table: string) => {
       const q: Record<string, unknown> = {}
       const chain = () => q
@@ -28,6 +36,7 @@ vi.mock("@/lib/supabase-admin", () => ({
       admin: {
         getUserById: async () => ({ data: { user: { email: state.currentEmail } }, error: null }),
         updateUserById: async (id: string, attrs: Record<string, unknown>) => {
+          state.order.push("update")
           state.updates.push({ id, attrs })
           return { data: {}, error: state.updateError }
         },
@@ -50,6 +59,9 @@ beforeEach(() => {
   state.taken = []
   state.updateError = null
   state.updates = []
+  state.audits = []
+  state.auditError = null
+  state.order = []
 })
 
 describe("PUT /api/businesses/staff-email", () => {
@@ -105,5 +117,45 @@ describe("PUT /api/businesses/staff-email", () => {
     const res = await put({ business_id: BIZ, user_id: USER, email: "OLD@example.com" })
     expect((await res.json()).unchanged).toBe(true)
     expect(state.updates).toHaveLength(0)
+  })
+
+  it("audits the change first, ids only, then updates", async () => {
+    const res = await put({ business_id: BIZ, user_id: USER, email: "new@example.com" })
+    expect(res.status).toBe(200)
+    expect(state.order).toEqual(["audit", "update"])
+    expect(state.audits).toEqual([
+      {
+        fn: "record_audit",
+        args: {
+          p_action: "staff_email_changed",
+          p_actor: "op-1",
+          p_subject_user_id: USER,
+          p_request_id: null,
+          p_detail: { source: "superadmin-panel", business_id: BIZ },
+        },
+      },
+    ])
+    const written = JSON.stringify(state.audits)
+    expect(written).not.toContain("new@example.com")
+    expect(written).not.toContain("old@example.com")
+  })
+
+  it("does not change the email when the audit write fails", async () => {
+    state.auditError = { code: "22P02", message: "invalid input value for enum" }
+    const err = vi.spyOn(console, "error").mockImplementation(() => {})
+    const res = await put({ business_id: BIZ, user_id: USER, email: "new@example.com" })
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: "audit_failed" })
+    expect(state.updates).toHaveLength(0)
+    expect(JSON.stringify(err.mock.calls)).not.toContain("new@example.com")
+    err.mockRestore()
+  })
+
+  it("writes no audit row for refused or unchanged requests", async () => {
+    state.taken = [{ user_id: "someone-else" }]
+    await put({ business_id: BIZ, user_id: USER, email: "new@example.com" })
+    state.taken = []
+    await put({ business_id: BIZ, user_id: USER, email: "old@example.com" })
+    expect(state.audits).toHaveLength(0)
   })
 })

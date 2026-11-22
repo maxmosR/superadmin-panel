@@ -6,7 +6,12 @@
 // and the next code goes to the new address. profiles.email follows through
 // the on_auth_user_updated_profile trigger. A platform admin's email is
 // refused (403 target_is_operator). Logs carry ids only.
+// Audited before the change (record_audit 'staff_email_changed': operator,
+// target user, business — never the addresses); without the audit row the
+// email is not changed (500 audit_failed). The caller is an AAL2 operator
+// (requireOperator).
 import { NextResponse } from "next/server"
+import { recordOperatorAudit } from "@/lib/operator-audit"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { parseIdentifier } from "@/lib/roles"
@@ -64,8 +69,18 @@ export async function PUT(request: Request) {
   if (takenError) return NextResponse.json({ error: "lookup_failed" }, { status: 500 })
   if (taken && taken.length > 0) return NextResponse.json({ error: "email_taken" }, { status: 409 })
 
+  const audit = await recordOperatorAudit(admin, {
+    action: "staff_email_changed",
+    actorUserId: guard.admin.userId,
+    subjectUserId: b.user_id,
+    businessId: b.business_id,
+  })
+  if (!audit.ok) return NextResponse.json({ error: "audit_failed" }, { status: 500 })
+
   const { error } = await admin.auth.admin.updateUserById(b.user_id, { email: id.email, email_confirm: true })
   if (error) {
+    // The audit row stays (an attempt); this links it to the outcome.
+    console.error(JSON.stringify({ event: "operator_staff_email_not_applied", audit: audit.id, status: error.status ?? null }))
     // Auth's own uniqueness check (an account the profiles mirror missed).
     if (error.status === 422 || /already|exists|registered/i.test(error.message ?? "")) {
       return NextResponse.json({ error: "email_taken" }, { status: 409 })
@@ -75,7 +90,7 @@ export async function PUT(request: Request) {
   }
 
   console.info(
-    JSON.stringify({ event: "operator_staff_email_changed", operator: guard.admin.userId, business: b.business_id, user: b.user_id }),
+    JSON.stringify({ event: "operator_staff_email_changed", audit: audit.id, operator: guard.admin.userId, business: b.business_id, user: b.user_id }),
   )
   return NextResponse.json({ ok: true })
 }

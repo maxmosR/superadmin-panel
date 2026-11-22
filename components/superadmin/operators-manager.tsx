@@ -66,7 +66,7 @@ export function OperatorsManager({ adminEmail = null }: { adminEmail?: string | 
       body: JSON.stringify({ user_id: op.user_id, is_active: !op.is_active }),
     })
     const j = await res.json().catch(() => ({}))
-    if (!res.ok) setError(j.error ? apiError(t, j.error, res.status, { last_operator: t.operators.lastOperator }) : t.operators.updateFailed)
+    if (!res.ok) setError(j.error ? apiError(t, j.error, res.status, { last_operator: t.operators.lastOperator, cannot_deactivate_self: t.operators.askAnother }) : t.operators.updateFailed)
     await load()
     setBusy(null)
   }
