@@ -12,6 +12,7 @@ import { LanguageSwitch, useI18n } from "@/lib/i18n/client"
 const NAV = [
   { href: "/", key: "restaurants" },
   { href: "/sms", key: "sms" },
+  { href: "/finance", key: "finance" },
   { href: "/operators", key: "operators" },
   { href: "/features", key: "sections" },
   { href: "/providers", key: "providers" },
@@ -47,7 +48,7 @@ export function ConsoleShell({
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
+      <header className="border-b bg-card print:hidden">
         <div className={cn("mx-auto flex flex-wrap items-center gap-x-6 gap-y-2 px-4 pt-3 sm:px-6 md:pb-0", container)}>
           <Link href="/" className="flex items-center gap-2 rounded-md py-1 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
             <ShieldCheck className="h-5 w-5 text-primary" aria-hidden />
@@ -90,7 +91,7 @@ export function ConsoleShell({
         </div>
       </header>
 
-      <main className={cn("mx-auto px-4 py-6 sm:px-6", container)}>
+      <main className={cn("mx-auto px-4 py-6 sm:px-6 print:max-w-none print:p-0", container)}>
         {width === "narrow" ? <div className="max-w-3xl">{children}</div> : children}
       </main>
     </div>

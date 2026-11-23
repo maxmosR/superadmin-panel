@@ -39,6 +39,10 @@ import * as smsAlias from "@/app/api/sms/alias/route"
 import * as smsOpenapi from "@/app/api/sms/openapi/route"
 import * as fiscalSettings from "@/app/api/businesses/fiscal-settings/route"
 import * as orderDevices from "@/app/api/businesses/order-devices/route"
+import * as commission from "@/app/api/businesses/commission/route"
+import * as financeOverview from "@/app/api/finance/overview/route"
+import * as financeSettlements from "@/app/api/finance/settlements/route"
+import * as financeStatement from "@/app/api/finance/settlements/statement/route"
 
 const lookup = vi.mocked(lookupOperator)
 const adminClient = vi.mocked(createAdminClient)
@@ -247,6 +251,37 @@ adminHandlers.push(
   [
     "PATCH /api/businesses/order-devices",
     () => orderDevices.PATCH(jsonRequest("PATCH", "http://localhost/api/businesses/order-devices", { business_id: BIZ, device_id: USER })),
+  ],
+)
+
+// Finance: overview, settlements (cancel uses the service role) and commission settings.
+const SETTLEMENT = "00000000-0000-0000-0000-000000000004"
+adminHandlers.push(
+  ["GET /api/finance/overview", () => financeOverview.GET(new Request("http://localhost/api/finance/overview?from=2026-11-01&to=2026-11-23"))],
+  ["GET /api/finance/settlements", () => financeSettlements.GET(new Request("http://localhost/api/finance/settlements?status=pending_approval"))],
+  [
+    "POST /api/finance/settlements",
+    () =>
+      financeSettlements.POST(
+        jsonRequest("POST", "http://localhost/api/finance/settlements", {
+          action: "cancel",
+          settlement_id: SETTLEMENT,
+          expected_version: 1,
+          reason: "wrong rate",
+        }),
+      ),
+  ],
+  [
+    "GET /api/finance/settlements/statement",
+    () => financeStatement.GET(new Request(`http://localhost/api/finance/settlements/statement?id=${SETTLEMENT}`)),
+  ],
+  ["GET /api/businesses/commission", () => commission.GET(new Request(`http://localhost/api/businesses/commission?business_id=${BIZ}`))],
+  [
+    "PUT /api/businesses/commission",
+    () =>
+      commission.PUT(
+        jsonRequest("PUT", "http://localhost/api/businesses/commission", { business_id: BIZ, rate_percent: 15, monthly_cap_eur: 250 }),
+      ),
   ],
 )
 

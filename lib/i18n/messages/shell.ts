@@ -1,7 +1,7 @@
 // Header, page frame and the page-level error screen.
 export const en = {
   brand: "Operator console",
-  nav: { restaurants: "Restaurants", sms: "SMS", operators: "Operators", sections: "Admin panel sections", providers: "Providers", label: "Console sections" },
+  nav: { restaurants: "Restaurants", sms: "SMS", finance: "Finance", operators: "Operators", sections: "Admin panel sections", providers: "Providers", label: "Console sections" },
   signOut: "Sign out",
   titles: { setup: "{name} · Setup", zones: "{name} · Delivery zones", sms: "{name} · SMS" },
   pageError: {
@@ -13,7 +13,7 @@ export const en = {
 
 export const it: typeof en = {
   brand: "Console operatori",
-  nav: { restaurants: "Ristoranti", sms: "SMS", operators: "Operatori", sections: "Sezioni del pannello", providers: "Fornitori", label: "Sezioni della console" },
+  nav: { restaurants: "Ristoranti", sms: "SMS", finance: "Finanza", operators: "Operatori", sections: "Sezioni del pannello", providers: "Fornitori", label: "Sezioni della console" },
   signOut: "Esci",
   titles: { setup: "{name} · Configura", zones: "{name} · Zone di consegna", sms: "{name} · SMS" },
   pageError: {

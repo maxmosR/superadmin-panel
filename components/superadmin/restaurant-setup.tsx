@@ -22,6 +22,7 @@ import { StaffRolesPanel } from "./staff-roles-panel"
 import { PayoutAccountCell } from "./payout-account-cell"
 import { BusinessProvidersEditor } from "./business-providers-editor"
 import { FiscalSettingsPanel } from "./fiscal-settings-panel"
+import { CommissionSettingsPanel } from "./commission-settings-panel"
 import { OrderDevicesPanel } from "./order-devices-panel"
 import { Field } from "./field"
 import { useConfirm } from "./confirm-dialog"
@@ -32,8 +33,8 @@ import type { BusinessRow } from "./superadmin-dashboard"
 // field sections with their own Save button, list sections (domains, staff,
 // payout account) as soon as you act. Nothing waits for a page-wide Save.
 
-type SectionId = "details" | "domains" | "branding" | "orders" | "payout" | "fiscal" | "devices" | "staff" | "providers" | "configuration" | "zones"
-const SECTIONS: SectionId[] = ["details", "domains", "branding", "orders", "payout", "fiscal", "devices", "staff", "providers", "configuration", "zones"]
+type SectionId = "details" | "domains" | "branding" | "orders" | "payout" | "commission" | "fiscal" | "devices" | "staff" | "providers" | "configuration" | "zones"
+const SECTIONS: SectionId[] = ["details", "domains", "branding", "orders", "payout", "commission", "fiscal", "devices", "staff", "providers", "configuration", "zones"]
 
 /** The setup steps each section is responsible for (drives the menu marks). */
 const STEPS_OF: Record<SectionId, SetupStep["key"][]> = {
@@ -42,6 +43,7 @@ const STEPS_OF: Record<SectionId, SetupStep["key"][]> = {
   branding: ["sms"],
   orders: ["order_email"],
   payout: ["payout"],
+  commission: [],
   fiscal: [],
   devices: [],
   staff: ["owner"],
@@ -72,6 +74,8 @@ function sectionTitle(t: Messages, id: SectionId): string {
       return t.edit.orders
     case "payout":
       return t.edit.payout
+    case "commission":
+      return t.finance.commission.title
     case "fiscal":
       return t.fiscal.title
     case "devices":
@@ -486,6 +490,10 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
               account={row.payout_account ?? null}
               onCreated={() => void load()}
             />
+          </Panel>
+
+          <Panel id="commission" title={t.finance.commission.title} description={t.finance.commission.description} readiness={readiness}>
+            <CommissionSettingsPanel businessId={row.business_id} />
           </Panel>
 
           <Panel id="fiscal" title={t.fiscal.title} description={t.fiscal.description} readiness={readiness}>

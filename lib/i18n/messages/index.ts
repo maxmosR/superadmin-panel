@@ -19,8 +19,9 @@ import * as sms from "./sms"
 import * as mfa from "./mfa"
 import * as fiscal from "./fiscal"
 import * as devices from "./devices"
+import * as finance from "./finance"
 
-const areas = { common, shell, setup, dashboard, create, edit, staff, domains, payout, providers, operators, sections, login, zones, sms, mfa, fiscal, devices }
+const areas = { common, shell, setup, dashboard, create, edit, staff, domains, payout, providers, operators, sections, login, zones, sms, mfa, fiscal, devices, finance }
 type Areas = typeof areas
 
 export type Messages = { [K in keyof Areas]: Areas[K]["en"] }
