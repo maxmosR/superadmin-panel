@@ -627,3 +627,235 @@ export function statementTotals(lines: StatementLine[]): StatementTotals {
 export function romeIsoDate(iso: string): string {
   return formatLocalDate(romeToday(new Date(iso)))
 }
+
+// ---------------------------------------------------------------------------
+// One restaurant's orders in a period (console /finance/businesses/[id])
+// ---------------------------------------------------------------------------
+
+/** IVA on BirraOra's commission, as public.commission_vat_bps(). */
+export const COMMISSION_VAT_BPS = 2200
+
+/** round(fee × IVA), half away from zero like Postgres round() on numeric. */
+export function vatOn(feeCents: number, vatBps: number = COMMISSION_VAT_BPS): number {
+  const x = (Math.abs(feeCents) * vatBps) / 10_000
+  return Math.sign(feeCents) * Math.round(x)
+}
+
+/** Case- and accent-insensitive "contains", for the restaurant name filter. */
+export function nameMatches(name: string, query: string): boolean {
+  const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim()
+  const q = fold(query)
+  return q === "" || fold(name).includes(q)
+}
+
+/** One ledger entry of the restaurant, with the same money columns as the overview. */
+export interface BusinessOrderLine {
+  order_id: string
+  order_number: string
+  occurred_at: string
+  kind: "fee" | "reversal"
+  method: "card" | "cash"
+  /** Order total (0 on a refund line: refunds have their own column). */
+  gross_cents: number
+  cash_cents: number
+  card_cents: number
+  refund_cents: number
+  base_cents: number
+  rate_bps: number
+  full_fee_cents: number
+  fee_cents: number
+  vat_cents: number
+  /** Stripe's card fee; null while order-worker hasn't read it from Stripe yet. */
+  stripe_fee_cents: number | null
+  /** Card money − commission − IVA − Stripe fee for this line. */
+  net_cents: number
+}
+
+export interface LedgerEntryRow {
+  order_id: unknown
+  kind: unknown
+  method: unknown
+  occurred_at: unknown
+  amount_cents: unknown
+  base_cents: unknown
+  card_cents: unknown
+  rate_bps: unknown
+  full_fee_cents: unknown
+  fee_cents: unknown
+}
+
+/** A commission_entries row → a display line. `stripeFee` is the card_fees row's fee, if any. */
+export function businessOrderLine(e: LedgerEntryRow, orderNumber: string | null, stripeFee: number | null): BusinessOrderLine {
+  const kind = e.kind === "reversal" ? "reversal" : "fee"
+  const method = e.method === "cash" ? "cash" : "card"
+  const amount = toInt(e.amount_cents)
+  const cardMoney = toInt(e.card_cents)
+  const fee = toInt(e.fee_cents)
+  const vat = vatOn(fee)
+  // Stripe keeps its fee on a refund; only a captured card order carries one.
+  const sfee = kind === "fee" && method === "card" ? stripeFee : 0
+  return {
+    order_id: String(e.order_id ?? ""),
+    order_number: orderNumber ?? "",
+    occurred_at: String(e.occurred_at ?? ""),
+    kind,
+    method,
+    gross_cents: kind === "fee" ? amount : 0,
+    cash_cents: kind === "fee" && method === "cash" ? amount : 0,
+    card_cents: kind === "fee" && method === "card" ? amount : 0,
+    refund_cents: kind === "reversal" ? -cardMoney : 0,
+    base_cents: toInt(e.base_cents),
+    rate_bps: toInt(e.rate_bps),
+    full_fee_cents: toInt(e.full_fee_cents),
+    fee_cents: fee,
+    vat_cents: vat,
+    stripe_fee_cents: sfee,
+    net_cents: cardMoney - fee - vat - (sfee ?? 0),
+  }
+}
+
+export interface BusinessDetailTotals {
+  orders_count: number
+  card_orders: number
+  cash_orders: number
+  gross_cents: number
+  cash_cents: number
+  card_cents: number
+  refund_cents: number
+  base_cents: number
+  fee_cents: number
+  /** IVA on the summed commission (as the overview), so it can differ by a cent from the line sum. */
+  vat_cents: number
+  stripe_fee_cents: number
+  /** Card orders whose Stripe fee isn't known yet. */
+  stripe_fee_pending: number
+  net_cents: number
+}
+
+export function businessDetailTotals(lines: BusinessOrderLine[]): BusinessDetailTotals {
+  const t: BusinessDetailTotals = {
+    orders_count: 0,
+    card_orders: 0,
+    cash_orders: 0,
+    gross_cents: 0,
+    cash_cents: 0,
+    card_cents: 0,
+    refund_cents: 0,
+    base_cents: 0,
+    fee_cents: 0,
+    vat_cents: 0,
+    stripe_fee_cents: 0,
+    stripe_fee_pending: 0,
+    net_cents: 0,
+  }
+  // Σ(card money − commission − Stripe fee), before IVA on the total.
+  let beforeVat = 0
+  for (const l of lines) {
+    if (l.kind === "fee") {
+      t.orders_count++
+      if (l.method === "card") t.card_orders++
+      else t.cash_orders++
+    }
+    t.gross_cents += l.gross_cents
+    t.cash_cents += l.cash_cents
+    t.card_cents += l.card_cents
+    t.refund_cents += l.refund_cents
+    t.base_cents += l.base_cents
+    t.fee_cents += l.fee_cents
+    if (l.stripe_fee_cents === null) t.stripe_fee_pending++
+    else t.stripe_fee_cents += l.stripe_fee_cents
+    beforeVat += l.net_cents + l.vat_cents
+  }
+  t.vat_cents = vatOn(t.fee_cents)
+  t.net_cents = beforeVat - t.vat_cents
+  return t
+}
+
+export interface BusinessDetail {
+  from: string
+  to: string
+  cap_month: string
+  business: { business_id: string; business_name: string; slug: string }
+  settings: { rate_bps: number; monthly_cap_cents: number | null }
+  cap: { fee_cents: number; cap_reached_at: string | null }
+  lines: BusinessOrderLine[]
+}
+
+export interface BusinessCsvLabels {
+  order: string
+  date: string
+  type: string
+  method: string
+  gross: string
+  cash: string
+  card: string
+  refunds: string
+  base: string
+  rate: string
+  commission: string
+  capped: string
+  vat: string
+  stripe: string
+  net: string
+  kinds: { fee: string; reversal: string }
+  methods: { card: string; cash: string }
+  yes: string
+  pending: string
+  totals: string
+}
+
+/** A restaurant's order lines and their totals as an Italian-Excel CSV: `;` separated, comma decimals, CRLF lines. */
+export function businessCsv(lines: BusinessOrderLine[], l: BusinessCsvLabels): string {
+  const head = [l.order, l.date, l.type, l.method, l.gross, l.cash, l.card, l.refunds, l.base, l.rate, l.commission, l.capped, l.vat, l.stripe, l.net]
+  const rows = lines.map((x) => [
+    x.order_number,
+    x.occurred_at ? formatRomeDateTime(x.occurred_at) : "",
+    l.kinds[x.kind],
+    l.methods[x.method],
+    centsToCsv(x.gross_cents),
+    centsToCsv(x.cash_cents),
+    centsToCsv(x.card_cents),
+    centsToCsv(x.refund_cents),
+    centsToCsv(x.base_cents),
+    centsToCsv(x.rate_bps), // basis points / 100 = percent
+    centsToCsv(x.fee_cents),
+    x.fee_cents !== x.full_fee_cents ? l.yes : "",
+    centsToCsv(x.vat_cents),
+    x.stripe_fee_cents === null ? l.pending : centsToCsv(x.stripe_fee_cents),
+    centsToCsv(x.net_cents),
+  ])
+  const t = businessDetailTotals(lines)
+  const total = [
+    l.totals, "", "", "",
+    centsToCsv(t.gross_cents), centsToCsv(t.cash_cents), centsToCsv(t.card_cents), centsToCsv(t.refund_cents),
+    centsToCsv(t.base_cents), "", centsToCsv(t.fee_cents), "", centsToCsv(t.vat_cents), centsToCsv(t.stripe_fee_cents), centsToCsv(t.net_cents),
+  ]
+  return [head, ...rows, total].map((r) => r.map(csvCell).join(";")).join("\r\n") + "\r\n"
+}
+
+// ---------------------------------------------------------------------------
+// BirraOra's platform Stripe balance (operator-stripe-balance)
+// ---------------------------------------------------------------------------
+
+export interface PlatformBalance {
+  available_cents: number
+  pending_cents: number
+  /** Pending money by the (UTC) day it becomes available, soonest first. */
+  upcoming: Array<{ date: string; amount_cents: number }>
+  upcoming_partial: boolean
+  as_of: string
+}
+
+export function normalisePlatformBalance(raw: Record<string, unknown>): PlatformBalance {
+  const upcoming = Array.isArray(raw.upcoming) ? (raw.upcoming as unknown[]) : []
+  return {
+    available_cents: toInt(raw.available_cents),
+    pending_cents: toInt(raw.pending_cents),
+    upcoming: upcoming
+      .map((u) => obj(u))
+      .filter((u) => typeof u.date === "string" && DATE_RE.test(u.date))
+      .map((u) => ({ date: u.date as string, amount_cents: toInt(u.amount_cents) })),
+    upcoming_partial: raw.upcoming_partial === true,
+    as_of: typeof raw.as_of === "string" ? raw.as_of : "",
+  }
+}

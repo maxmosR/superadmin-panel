@@ -11,6 +11,7 @@ import * as overview from "@/app/api/finance/overview/route"
 import * as settlements from "@/app/api/finance/settlements/route"
 import * as commission from "@/app/api/businesses/commission/route"
 import * as statement from "@/app/api/finance/settlements/statement/route"
+import * as balance from "@/app/api/finance/balance/route"
 
 const BIZ = "00000000-0000-4000-8000-000000000001"
 const SID = "00000000-0000-4000-8000-000000000009"
@@ -264,5 +265,50 @@ describe("GET /api/finance/settlements/statement", () => {
     const body = await res.json()
     expect(body.settlement).toMatchObject({ payout_cents: 1500, vat_cents: 66, business_name: "Hosuto" })
     expect(body.lines[0]).toMatchObject({ order_number: "7", amount_cents: 2000 })
+  })
+})
+
+describe("GET /api/finance/balance", () => {
+  it("forwards to operator-stripe-balance with the operator's own token and normalises the answer, no service-role client", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          currency: "eur",
+          available_cents: 1000,
+          pending_cents: "8550",
+          upcoming: [{ date: "2026-12-01", amount_cents: 5224 }, { date: "nope", amount_cents: 1 }],
+          upcoming_partial: false,
+          as_of: "2026-11-24T02:00:00.000Z",
+        }),
+        { status: 200 },
+      ),
+    )
+    const res = await balance.GET()
+    expect(res.status).toBe(200)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe("https://proj.supabase.co/functions/v1/operator-stripe-balance")
+    expect(init.headers.Authorization).toBe("Bearer operator-jwt")
+    expect(await res.json()).toEqual({
+      available_cents: 1000,
+      pending_cents: 8550,
+      upcoming: [{ date: "2026-12-01", amount_cents: 5224 }],
+      upcoming_partial: false,
+      as_of: "2026-11-24T02:00:00.000Z",
+    })
+    expect(createAdminClient).not.toHaveBeenCalled()
+  })
+
+  it("503 balance_unavailable while the function isn't deployed", async () => {
+    fetchMock.mockResolvedValue(new Response("not found", { status: 404 }))
+    const res = await balance.GET()
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: "balance_unavailable" })
+  })
+
+  it("passes Stripe outages through as payment_gateway_unavailable", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "payment_gateway_unavailable" }), { status: 503 }))
+    const res = await balance.GET()
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: "payment_gateway_unavailable" })
   })
 })

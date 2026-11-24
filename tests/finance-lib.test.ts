@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
 import {
+  businessCsv,
+  businessDetailTotals,
+  businessOrderLine,
+  nameMatches,
+  vatOn,
   bpsToPercentString,
   capProgress,
   centsToCsv,
@@ -260,5 +265,94 @@ describe("settlement statement", () => {
   it("quotes cells that contain the separator", () => {
     const csv = statementCsv([], { ...messages.en.finance.statement.cols, order: 'Order; "#"', kinds: messages.en.finance.statement.kinds, methods: messages.en.finance.statement.methods, yes: "yes" })
     expect(csv.startsWith('"Order; ""#""";Date')).toBe(true)
+  })
+})
+
+describe("one restaurant's order lines", () => {
+  const entry = (o: Partial<Record<string, unknown>>) => ({
+    order_id: "o1",
+    kind: "fee",
+    method: "card",
+    occurred_at: "2026-11-24T00:03:05Z",
+    amount_cents: "3000",
+    base_cents: "2500",
+    card_cents: "3000",
+    rate_bps: 1000,
+    full_fee_cents: "250",
+    fee_cents: "250",
+    ...o,
+  })
+
+  it("rounds IVA half away from zero, like Postgres", () => {
+    expect(vatOn(250)).toBe(55)
+    expect(vatOn(25)).toBe(6) // 5.5 → 6
+    expect(vatOn(-25)).toBe(-6)
+    expect(vatOn(0)).toBe(0)
+  })
+
+  it("filters names ignoring case and accents", () => {
+    expect(nameMatches("Caffè Rossi", "caffe")).toBe(true)
+    expect(nameMatches("Caffè Rossi", "  ROSS ")).toBe(true)
+    expect(nameMatches("Caffè Rossi", "bianchi")).toBe(false)
+    expect(nameMatches("anything", "")).toBe(true)
+  })
+
+  it("a card order: net = card − commission − IVA − Stripe fee", () => {
+    const l = businessOrderLine(entry({}), "1042", 59)
+    expect(l).toMatchObject({ order_number: "1042", gross_cents: 3000, card_cents: 3000, cash_cents: 0, refund_cents: 0, fee_cents: 250, vat_cents: 55, stripe_fee_cents: 59 })
+    expect(l.net_cents).toBe(3000 - 250 - 55 - 59)
+  })
+
+  it("a card order without its Stripe fee yet is pending (null) and counted as 0", () => {
+    const l = businessOrderLine(entry({}), "1042", null)
+    expect(l.stripe_fee_cents).toBeNull()
+    expect(l.net_cents).toBe(3000 - 250 - 55)
+    expect(businessDetailTotals([l]).stripe_fee_pending).toBe(1)
+  })
+
+  it("a cash order has no card money and no Stripe fee: its commission is a deficit", () => {
+    const l = businessOrderLine(entry({ method: "cash", card_cents: 0 }), "7", null)
+    expect(l).toMatchObject({ gross_cents: 3000, cash_cents: 3000, card_cents: 0, stripe_fee_cents: 0, net_cents: -305 })
+  })
+
+  it("a refund is its own line: no gross, refund amount, commission back, no Stripe fee back", () => {
+    const l = businessOrderLine(entry({ kind: "reversal", amount_cents: -3000, base_cents: -2500, card_cents: -3000, fee_cents: -250, full_fee_cents: -250 }), "1042", 59)
+    expect(l).toMatchObject({ gross_cents: 0, refund_cents: 3000, fee_cents: -250, vat_cents: -55, stripe_fee_cents: 0, net_cents: -3000 + 250 + 55 })
+  })
+
+  it("totals match the overview: IVA on the summed commission", () => {
+    const a = businessOrderLine(entry({ fee_cents: 25, full_fee_cents: 25 }), "1", 10)
+    const b = businessOrderLine(entry({ order_id: "o2", fee_cents: 25, full_fee_cents: 25 }), "2", 10)
+    const c = businessOrderLine(entry({ order_id: "o3", method: "cash", card_cents: 0, amount_cents: 1000, fee_cents: 100, full_fee_cents: 100 }), "3", null)
+    const t = businessDetailTotals([a, b, c])
+    expect(t).toMatchObject({ orders_count: 3, card_orders: 2, cash_orders: 1, gross_cents: 7000, card_cents: 6000, cash_cents: 1000, fee_cents: 150, vat_cents: 33, stripe_fee_cents: 20, stripe_fee_pending: 0 })
+    expect(t.net_cents).toBe(6000 - 150 - 33 - 20)
+  })
+})
+
+describe("restaurant orders CSV", () => {
+  const labels = {
+    ...messages.en.finance.business.cols,
+    rate: "Rate %",
+    capped: "Capped",
+    kinds: messages.en.finance.business.kinds,
+    methods: messages.en.finance.business.methods,
+    yes: "yes",
+    pending: "pending",
+    totals: "Total",
+  }
+  const e = {
+    order_id: "o1", kind: "fee", method: "card", occurred_at: "2026-11-24T00:03:05Z",
+    amount_cents: 3000, base_cents: 2500, card_cents: 3000, rate_bps: 1000, full_fee_cents: 300, fee_cents: 250,
+  }
+
+  it("writes a header, one row per line (pending Stripe fee as text) and a total row", () => {
+    const csv = businessCsv([businessOrderLine(e, "10;42", null)], labels)
+    const rows = csv.split("\r\n")
+    expect(rows).toHaveLength(4) // header, line, total, trailing empty
+    expect(rows[0].split(";")).toHaveLength(15)
+    expect(rows[1]).toBe('"10;42";24/11/2026, 01:03;Order;Card;30,00;0,00;30,00;0,00;25,00;10,00;2,50;yes;0,55;pending;26,95')
+    expect(rows[2]).toBe("Total;;;;30,00;0,00;30,00;0,00;25,00;;2,50;;0,55;0,00;26,95")
+    expect(csv.endsWith("\r\n")).toBe(true)
   })
 })

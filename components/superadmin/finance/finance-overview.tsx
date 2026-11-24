@@ -3,7 +3,8 @@
 import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
-import { Loader2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ChevronRight, Loader2, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -22,36 +23,42 @@ import {
   capProgress,
   formatEuroCents,
   formatRateBps,
+  nameMatches,
   overviewTotals,
   presetRange,
-  romeRange,
   type FinanceOverviewRow,
-  type PresetKey,
   type Settlement,
   type SettlementStatus,
 } from "@/lib/finance"
 import { ConsoleShell, PageHead } from "../console-shell"
 import { useConfirm } from "../confirm-dialog"
 import { Field } from "../field"
+import { PeriodPicker, Stat } from "./period-picker"
+import { StripeBalanceCard } from "./stripe-balance"
 
 type StatusFilter = SettlementStatus | "all"
-const PRESETS: PresetKey[] = ["thisMonth", "lastMonth", "thisWeek"]
 const FILTERS: StatusFilter[] = ["pending_approval", "approved", "processing", "failed", "paid", "cancelled", "all"]
 
 // Everything money for the operator: what each restaurant took and owes in a
 // period, and the weekly settlements waiting for approval.
-export function FinanceOverview({ adminEmail = null }: { adminEmail?: string | null }) {
+export function FinanceOverview({
+  adminEmail = null,
+  initialRange = null,
+}: {
+  adminEmail?: string | null
+  /** From /finance?from=…&to=… (already validated), else this month. */
+  initialRange?: { from: string; to: string } | null
+}) {
   const { t, fmt } = useI18n()
+  const router = useRouter()
   const tRef = useRef(t)
   useEffect(() => {
     tRef.current = t
   }, [t])
 
-  const initial = useMemo(() => presetRange("thisMonth"), [])
-  const [from, setFrom] = useState(initial.from)
-  const [to, setTo] = useState(initial.to)
+  const initial = useMemo(() => initialRange ?? presetRange("thisMonth"), [initialRange])
   const [applied, setApplied] = useState(initial)
-  const [rangeError, setRangeError] = useState("")
+  const [query, setQuery] = useState("")
 
   const [rows, setRows] = useState<FinanceOverviewRow[]>([])
   const [capMonth, setCapMonth] = useState<string | null>(null)
@@ -65,6 +72,7 @@ export function FinanceOverview({ adminEmail = null }: { adminEmail?: string | n
   const [notice, setNotice] = useState("")
   const [busyId, setBusyId] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<Settlement | null>(null)
+  const [balanceKey, setBalanceKey] = useState(0)
 
   const { confirm, dialog } = useConfirm()
 
@@ -108,23 +116,13 @@ export function FinanceOverview({ adminEmail = null }: { adminEmail?: string | n
 
   useEffect(() => {
     void loadOverview(applied)
+    // Keep the period in the address, so Back from a restaurant returns to it.
+    window.history.replaceState(null, "", `/finance?from=${applied.from}&to=${applied.to}`)
   }, [applied, loadOverview])
 
   useEffect(() => {
     void loadSettlements(filter)
   }, [filter, loadSettlements])
-
-  const applyRange = (next: { from: string; to: string }) => {
-    const r = romeRange(next.from, next.to)
-    if (!r.ok) {
-      setRangeError(t.finance.errors[r.error])
-      return
-    }
-    setRangeError("")
-    setFrom(r.from)
-    setTo(r.to)
-    setApplied({ from: r.from, to: r.to })
-  }
 
   const dateFmt = useMemo(() => new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: ROME_TZ }), [])
   const monthFmt = useMemo(() => new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric", timeZone: "UTC" }), [])
@@ -137,6 +135,7 @@ export function FinanceOverview({ adminEmail = null }: { adminEmail?: string | n
 
   const afterAction = (message: string) => {
     setNotice(message)
+    setBalanceKey((k) => k + 1)
     void loadSettlements(filter)
     void loadOverview(applied)
   }
@@ -205,65 +204,44 @@ export function FinanceOverview({ adminEmail = null }: { adminEmail?: string | n
     }
   }
 
-  const totals = overviewTotals(rows)
+  const shownRows = rows.filter((r) => nameMatches(r.business_name, query) || nameMatches(r.slug, query))
+  const totals = overviewTotals(shownRows)
+  const detailHref = (id: string) => `/finance/businesses/${id}?from=${applied.from}&to=${applied.to}`
   const inFlight = busyId !== null
 
   return (
     <ConsoleShell adminEmail={adminEmail}>
       <PageHead title={t.finance.title} description={t.finance.description} />
 
+      {/* BirraOra's Stripe balance vs what the waiting settlements need (all restaurants, any period) */}
+      <StripeBalanceCard
+        reloadKey={balanceKey}
+        awaitingCents={loading && rows.length === 0 ? null : rows.reduce((n, r) => n + r.pending_payout_cents, 0)}
+        awaitingCount={rows.reduce((n, r) => n + r.pending_settlements, 0)}
+      />
+
       {/* Period */}
-      <form
-        className="mb-6 flex flex-wrap items-end gap-3"
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault()
-          applyRange({ from, to })
-        }}
-      >
-        <div className="w-40">
-          <Field label={t.finance.range.from}>
-            {(p) => <Input {...p} type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-invalid={rangeError ? true : undefined} />}
-          </Field>
-        </div>
-        <div className="w-40">
-          <Field label={t.finance.range.to}>
-            {(p) => <Input {...p} type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-invalid={rangeError ? true : undefined} />}
-          </Field>
-        </div>
-        <Button type="submit" variant="outline">
-          {t.finance.range.apply}
-        </Button>
-        <div role="group" aria-label={t.finance.range.label} className="inline-flex rounded-md border p-0.5">
-          {PRESETS.map((k) => {
-            const r = presetRange(k)
-            const active = applied.from === r.from && applied.to === r.to
-            return (
-              <button
-                key={k}
-                type="button"
-                aria-pressed={active}
-                onClick={() => applyRange(r)}
-                className={cn(
-                  "h-8 rounded-[5px] px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                  active ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {t.finance.range.presets[k]}
-              </button>
-            )
-          })}
-        </div>
-        <p className={cn("basis-full text-xs", rangeError ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
-          {rangeError || t.finance.range.hint}
-        </p>
-      </form>
+      <PeriodPicker applied={applied} onApply={setApplied} />
 
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      {/* Totals of the restaurants shown */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <Stat label={t.finance.overview.summary.orders} value={loading ? "—" : String(totals.orders_count)} />
+        <Stat label={t.finance.overview.summary.gross} value={loading ? "—" : formatEuroCents(totals.gross_cents)} />
+        <Stat label={t.finance.overview.summary.commission} value={loading ? "—" : formatEuroCents(totals.fee_cents)} />
+        <Stat label={t.finance.overview.summary.vat} value={loading ? "—" : formatEuroCents(totals.vat_cents)} />
+        <Stat label={t.finance.overview.summary.stripe} value={loading ? "—" : formatEuroCents(totals.stripe_fee_cents)} hint={t.finance.overview.feesPendingNote} />
+        <Stat
+          label={t.finance.overview.summary.net}
+          value={loading ? "—" : formatEuroCents(totals.net_cents)}
+          tone={!loading && totals.net_cents < 0 ? "bad" : undefined}
+        />
+      </div>
 
       {/* Per-restaurant overview */}
       <Card className="mb-6">
@@ -276,10 +254,31 @@ export function FinanceOverview({ adminEmail = null }: { adminEmail?: string | n
           )}
         </CardHeader>
         <CardContent>
+          {!loading && rows.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-end gap-3">
+              <div className="w-72">
+                <Field label={t.finance.overview.search}>
+                  {(p) => (
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                      <Input {...p} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.finance.overview.searchPlaceholder} className="pl-8" />
+                    </div>
+                  )}
+                </Field>
+              </div>
+              {query.trim() && (
+                <p className="pb-2 text-xs text-muted-foreground" aria-live="polite">
+                  {fmt(t.finance.overview.shown, { n: shownRows.length, total: rows.length })}
+                </p>
+              )}
+            </div>
+          )}
           {loading ? (
             <Spinner label={t.finance.overview.loading} />
           ) : rows.length === 0 ? (
             <p className="py-6 text-sm text-muted-foreground">{t.finance.overview.empty}</p>
+          ) : shownRows.length === 0 ? (
+            <p className="py-6 text-sm text-muted-foreground">{fmt(t.finance.overview.noMatch, { q: query.trim() })}</p>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -309,11 +308,24 @@ export function FinanceOverview({ adminEmail = null }: { adminEmail?: string | n
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((r) => (
-                    <TableRow key={r.business_id}>
+                  {shownRows.map((r) => (
+                    <TableRow
+                      key={r.business_id}
+                      className="cursor-pointer"
+                      onClick={(e) => {
+                        // Let a real link (or a modified click) do its own thing.
+                        if ((e.target as HTMLElement).closest("a")) return
+                        router.push(detailHref(r.business_id))
+                      }}
+                    >
                       <TableCell>
-                        <Link href={`/businesses/${r.business_id}`} className="font-medium hover:underline">
+                        <Link
+                          href={detailHref(r.business_id)}
+                          className="inline-flex items-center gap-1 font-medium hover:underline"
+                          aria-label={fmt(t.finance.overview.openDetail, { name: r.business_name })}
+                        >
                           {r.business_name}
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
                         </Link>
                         <div className="text-xs text-muted-foreground">
                           {r.slug} · {fmt(t.finance.overview.rate, { rate: formatRateBps(r.rate_bps) })}

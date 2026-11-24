@@ -43,6 +43,8 @@ import * as commission from "@/app/api/businesses/commission/route"
 import * as financeOverview from "@/app/api/finance/overview/route"
 import * as financeSettlements from "@/app/api/finance/settlements/route"
 import * as financeStatement from "@/app/api/finance/settlements/statement/route"
+import * as financeBusiness from "@/app/api/finance/business/route"
+import * as financeBalance from "@/app/api/finance/balance/route"
 
 const lookup = vi.mocked(lookupOperator)
 const adminClient = vi.mocked(createAdminClient)
@@ -275,6 +277,10 @@ adminHandlers.push(
     "GET /api/finance/settlements/statement",
     () => financeStatement.GET(new Request(`http://localhost/api/finance/settlements/statement?id=${SETTLEMENT}`)),
   ],
+  [
+    "GET /api/finance/business",
+    () => financeBusiness.GET(new Request(`http://localhost/api/finance/business?business_id=${BIZ}&from=2026-11-01&to=2026-11-23`)),
+  ],
   ["GET /api/businesses/commission", () => commission.GET(new Request(`http://localhost/api/businesses/commission?business_id=${BIZ}`))],
   [
     "PUT /api/businesses/commission",
@@ -299,6 +305,8 @@ const allHandlers: Array<[string, () => Promise<Response>]> = [
     "POST /api/sms/alias",
     () => smsAlias.POST(jsonRequest("POST", "http://localhost/api/sms/alias", { action: "refresh", business_id: BIZ, alias_id: BIZ })),
   ],
+  // The platform Stripe balance: forwarded to operator-stripe-balance with the operator's own JWT.
+  ["GET /api/finance/balance", () => financeBalance.GET()],
   // The OpenAPI account's aliases: also forwarded to operator-sms-alias.
   ["GET /api/sms/openapi", () => smsOpenapi.GET()],
   [

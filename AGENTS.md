@@ -26,6 +26,7 @@ Platform console for the operator: it creates and manages restaurants (`business
 ## Payments
 
 - Each restaurant's Stripe Connect account is created from the businesses table (Payout account cell → `POST /api/businesses/payout-account` → the `operator-create-payout-account` Edge Function with the operator's own session). The console holds no Stripe key; the platform key lives only in Edge secrets. Never store per-restaurant Stripe keys.
+- The platform's Stripe balance (`GET /api/finance/balance`, shown on `/finance`) is read through the `operator-stripe-balance` Edge Function with the operator's own session: EUR available (what Approve & pay can transfer), pending, and the days pending money becomes available.
 - Order email and payment methods (card / cash on delivery, at least one) are set through `PUT /api/businesses/order-settings` (`set_order_settings` as the operator), never by writing the columns directly.
 
 ## Shared backend (Supabase)
