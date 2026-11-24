@@ -38,6 +38,7 @@ import * as smsBusiness from "@/app/api/sms/business/route"
 import * as smsAlias from "@/app/api/sms/alias/route"
 import * as smsOpenapi from "@/app/api/sms/openapi/route"
 import * as fiscalSettings from "@/app/api/businesses/fiscal-settings/route"
+import * as tracking from "@/app/api/businesses/tracking/route"
 import * as orderDevices from "@/app/api/businesses/order-devices/route"
 import * as commission from "@/app/api/businesses/commission/route"
 import * as financeOverview from "@/app/api/finance/overview/route"
@@ -246,6 +247,14 @@ adminHandlers.push(
     () =>
       fiscalSettings.PUT(jsonRequest("PUT", "http://localhost/api/businesses/fiscal-settings", { business_id: BIZ, fiscal_id: "01234567897" })),
   ],
+  ["GET /api/businesses/tracking", () => tracking.GET(new Request(`http://localhost/api/businesses/tracking?business_id=${BIZ}`))],
+  [
+    "PUT /api/businesses/tracking",
+    () =>
+      tracking.PUT(
+        jsonRequest("PUT", "http://localhost/api/businesses/tracking", { business_id: BIZ, ga4_measurement_id: "G-ABC1234", meta_pixel_id: null }),
+      ),
+  ],
   ["GET /api/businesses/order-devices", () => orderDevices.GET(new Request(`http://localhost/api/businesses/order-devices?business_id=${BIZ}`))],
   [
     "POST /api/businesses/order-devices",
@@ -405,6 +414,22 @@ describe("operator guard on every API handler", () => {
     )
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: "invalid_fiscal_id" })
+    expect(adminClient).not.toHaveBeenCalled()
+  })
+
+  it("PUT /api/businesses/tracking refuses malformed ids before the service-role client", async () => {
+    lookup.mockResolvedValue({ status: "operator", admin: { userId: "u1", email: "op@example.com" } })
+    const bad = [
+      [{ ga4_measurement_id: "UA-12345-1", meta_pixel_id: null }, "invalid_ga4_measurement_id"],
+      [{ ga4_measurement_id: "G-AB12\"><script>", meta_pixel_id: null }, "invalid_ga4_measurement_id"],
+      [{ ga4_measurement_id: null, meta_pixel_id: "12345" }, "invalid_meta_pixel_id"],
+      [{ ga4_measurement_id: null, meta_pixel_id: 1234567890123 }, "invalid_meta_pixel_id"],
+    ] as const
+    for (const [ids, code] of bad) {
+      const res = await tracking.PUT(jsonRequest("PUT", "http://localhost/api/businesses/tracking", { business_id: BIZ, ...ids }))
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: code })
+    }
     expect(adminClient).not.toHaveBeenCalled()
   })
 

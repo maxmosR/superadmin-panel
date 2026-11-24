@@ -19,7 +19,7 @@ function leaves(tree: Tree, prefix = ""): Map<string, Tree[string]> {
 }
 
 // Words that read the same in both languages.
-const SAME_IN_BOTH = new Set(["Email", "Slug", "Password", "Marketplace", "lat, lng", "km → €", "Nome *", "Area", "{fee} / {cap}"])
+const SAME_IN_BOTH = new Set(["1234567890123456", "Email", "Slug", "Password", "Marketplace", "lat, lng", "km → €", "Nome *", "Area", "{fee} / {cap}"])
 
 describe("console strings", () => {
   const en = leaves(messages.en as unknown as Tree)
