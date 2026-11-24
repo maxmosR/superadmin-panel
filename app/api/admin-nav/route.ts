@@ -27,7 +27,8 @@ export async function GET() {
     supabase.from("business_admin_nav").select("business_id, hidden_items"),
   ])
   if (bizError || navError) {
-    return NextResponse.json({ error: (bizError ?? navError)?.message ?? "load_failed" }, { status: 500 })
+    console.error(JSON.stringify({ event: "admin_nav_read_failed", code: (bizError ?? navError)?.code ?? null }))
+    return NextResponse.json({ error: "lookup_failed" }, { status: 500 })
   }
 
   const hidden = new Map((navRows ?? []).map((r) => [r.business_id as string, (r.hidden_items as string[]) ?? []]))
@@ -73,8 +74,9 @@ export async function PUT(request: Request) {
     .single()
   if (error) {
     // 23503: no such restaurant.
-    const status = error.code === "23503" ? 404 : 500
-    return NextResponse.json({ error: status === 404 ? "business_not_found" : error.message }, { status })
+    if (error.code === "23503") return NextResponse.json({ error: "business_not_found" }, { status: 404 })
+    console.error(JSON.stringify({ event: "admin_nav_save_failed", business: businessId, code: error.code ?? null }))
+    return NextResponse.json({ error: "save_failed" }, { status: 500 })
   }
   return NextResponse.json({ business_id: businessId, hidden_items: data.hidden_items })
 }

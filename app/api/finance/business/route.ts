@@ -1,5 +1,6 @@
 // One restaurant's orders for a date range (operator only), from the
-// commission ledger: one line per counted order or refund, with its Stripe fee.
+// commission ledger: one line per entry (order fee, refund, waiver, cap
+// adjustment), with its Stripe fee and whether a cash fee can still be waived.
 //   GET ?business_id=<uuid>&from=YYYY-MM-DD&to=YYYY-MM-DD
 //     → BusinessDetail (lib/finance.ts), 404 when the restaurant is unknown.
 // Same range rules as /api/finance/overview (Europe/Rome dates, `to`
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
   for (let offset = 0; offset < MAX_LINES; offset += PAGE) {
     const { data, error } = await admin
       .from("commission_entries")
-      .select("order_id, kind, method, occurred_at, amount_cents, base_cents, card_cents, rate_bps, full_fee_cents, fee_cents")
+      .select("id, order_id, kind, method, occurred_at, amount_cents, base_cents, card_cents, rate_bps, full_fee_cents, fee_cents")
       .eq("business_id", businessId)
       .gte("occurred_at", range.fromTs)
       .lt("occurred_at", range.toTs)
@@ -69,14 +70,19 @@ export async function GET(request: Request) {
   const ids = [...new Set(entries.map((e) => String(e.order_id)))]
   const numbers = new Map<string, string>()
   const fees = new Map<string, number>()
+  // Orders with a waiver, wherever it falls in time (it may be outside the range).
+  const waived = new Set<string>()
   for (let i = 0; i < ids.length; i += ID_CHUNK) {
     const chunk = ids.slice(i, i + ID_CHUNK)
-    const [orders, cardFees] = await Promise.all([
+    const [orders, cardFees, waivers] = await Promise.all([
       admin.from("orders").select("id, order_number").eq("business_id", businessId).in("id", chunk),
       admin.from("card_fees").select("order_id, fee_cents").eq("business_id", businessId).in("order_id", chunk),
+      admin.from("commission_entries").select("order_id").eq("business_id", businessId).eq("kind", "waiver").in("order_id", chunk),
     ])
     if (orders.error) return fail("orders", orders.error)
     if (cardFees.error) return fail("card_fees", cardFees.error)
+    if (waivers.error) return fail("waivers", waivers.error)
+    for (const w of (waivers.data ?? []) as { order_id: string }[]) waived.add(String(w.order_id))
     for (const o of (orders.data ?? []) as { id: string; order_number: unknown }[]) {
       if (o.order_number !== null && o.order_number !== undefined) numbers.set(o.id, String(o.order_number))
     }
@@ -99,7 +105,7 @@ export async function GET(request: Request) {
     },
     lines: entries.map((e) => {
       const id = String(e.order_id)
-      return businessOrderLine(e, numbers.get(id) ?? null, fees.has(id) ? (fees.get(id) as number) : null)
+      return businessOrderLine(e, numbers.get(id) ?? null, fees.has(id) ? (fees.get(id) as number) : null, waived.has(id))
     }),
   }
   return NextResponse.json(body)

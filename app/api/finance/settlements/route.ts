@@ -3,11 +3,21 @@
 //   POST { action: "pay", settlement_id, expected_version }
 //        → the operator-settlement-pay Edge Function with the operator's own
 //          session (approves a pending one, then transfers and pays out; the
-//          Stripe key lives only in Edge secrets). Its answer is passed through.
+//          Stripe key lives only in Edge secrets). Its answer is passed through,
+//          with the settlement normalised. 200 may carry `adopted_payout: true`
+//          (a payout Stripe already made for this settlement was recorded);
+//          500 `record_failed` means Stripe accepted the call but recording it
+//          failed: the settlement stays `processing` until order-worker
+//          reconciles it, so the UI shows it as submitted, not failed.
 //   POST { action: "cancel", settlement_id, expected_version, reason }
-//        → settlement_cancel with the service role, as this operator.
+//        → settlement_cancel with the service role, as this operator, audited
+//          first (record_audit "settlement_cancelled", settlement id; without
+//          the row nothing changes: 500 audit_failed).
+// A payment is audited by settlement_start_payment itself ("settlement_paid",
+// inside SQL, with the operator from the forwarded JWT): not written here.
 // Logs carry ids and statuses only.
 import { NextResponse } from "next/server"
+import { auditFailedResponse, recordOperatorAudit } from "@/lib/operator-audit"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { getSupabaseClient } from "@/lib/supabase-server"
@@ -56,7 +66,23 @@ export async function GET(request: Request) {
     for (const b of (biz ?? []) as { business_id: string; business_name: unknown; slug: unknown }[]) names.set(b.business_id, b)
   }
 
-  return NextResponse.json({ settlements: rows.map((r) => normaliseSettlement(r, names.get(String(r.business_id)))) })
+  // Who started each payment: operators' sign-in emails, shown to operators only.
+  const starters = [...new Set(rows.map((r) => r.payment_started_by).filter((v): v is string => typeof v === "string" && isUuid(v)))]
+  const emails = new Map<string, string>()
+  if (starters.length) {
+    const { data: ops, error: opsError } = await admin.from("platform_admins").select("user_id, email").in("user_id", starters)
+    // The list still works without the names.
+    if (opsError) console.error(JSON.stringify({ event: "settlements_operator_read_failed", code: opsError.code ?? null }))
+    for (const o of (ops ?? []) as { user_id: string; email: unknown }[]) if (typeof o.email === "string") emails.set(o.user_id, o.email)
+  }
+
+  return NextResponse.json({
+    settlements: rows.map((r) => {
+      const s = normaliseSettlement(r, names.get(String(r.business_id)))
+      s.payment_started_by_email = s.payment_started_by ? (emails.get(s.payment_started_by) ?? null) : null
+      return s
+    }),
+  })
 }
 
 export async function POST(request: Request) {
@@ -75,12 +101,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 })
   }
 
-  if (b.action === "pay") return pay(b.settlement_id, version)
+  if (b.action === "pay") return pay(b.settlement_id, version, guard.admin.userId)
 
   const reason = typeof b.reason === "string" ? b.reason.trim() : ""
   if (!reason || reason.length > 500) return NextResponse.json({ error: "invalid_reason" }, { status: 400 })
 
   const admin = createAdminClient()
+  const audit = await recordOperatorAudit(admin, {
+    action: "settlement_cancelled",
+    actorUserId: guard.admin.userId,
+    detail: { settlement_id: b.settlement_id, expected_version: version },
+  })
+  if (!audit.ok) return auditFailedResponse()
+
   const { data, error } = await admin.rpc("settlement_cancel", {
     p_id: b.settlement_id,
     p_expected_version: version,
@@ -95,14 +128,14 @@ export async function POST(request: Request) {
     }
     if (m === "forbidden") return NextResponse.json({ error: "not_operator" }, { status: 403 })
     if (MISSING.has(error.code)) return NextResponse.json({ error: "finance_unavailable" }, { status: 503 })
-    console.error(JSON.stringify({ event: "settlement_cancel_failed", settlement: b.settlement_id, code: error.code ?? null }))
+    console.error(JSON.stringify({ event: "settlement_cancel_failed", settlement: b.settlement_id, audit: audit.id, code: error.code ?? null }))
     return NextResponse.json({ error: "save_failed" }, { status: 500 })
   }
   console.info(JSON.stringify({ event: "settlement_cancelled", operator: guard.admin.userId, settlement: b.settlement_id }))
   return NextResponse.json({ settlement: normaliseSettlement((data ?? {}) as Record<string, unknown>) })
 }
 
-async function pay(settlementId: string, expectedVersion: number) {
+async function pay(settlementId: string, expectedVersion: number, operatorId: string) {
   const supabase = await getSupabaseClient()
   const { data: sessionData } = await supabase.auth.getSession()
   const token = sessionData.session?.access_token
@@ -126,13 +159,19 @@ async function pay(settlementId: string, expectedVersion: number) {
   console.log(
     JSON.stringify({
       event: "settlement_pay",
+      operator: operatorId,
       settlement: settlementId,
       status: res.status,
       error: typeof payload.error === "string" ? payload.error : null,
+      adopted: payload.adopted_payout === true,
     }),
   )
-  if (res.ok && payload.settlement && typeof payload.settlement === "object") {
-    return NextResponse.json({ settlement: normaliseSettlement(payload.settlement as Record<string, unknown>) }, { status: res.status })
+  if (payload.settlement && typeof payload.settlement === "object") {
+    const settlement = normaliseSettlement(payload.settlement as Record<string, unknown>)
+    if (res.ok) {
+      return NextResponse.json({ settlement, ...(payload.adopted_payout === true ? { adopted_payout: true } : {}) }, { status: res.status })
+    }
+    return NextResponse.json({ ...payload, settlement }, { status: res.status })
   }
   return NextResponse.json(payload, { status: res.status })
 }

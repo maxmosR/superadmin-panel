@@ -8,7 +8,11 @@
 // redeems it through the order-device Edge Function (`op: "pair"`) for its
 // own device key. Revoking sets order_devices.revoked_at, which the Edge
 // Function refuses from then on. key_hash is never read.
+// Pairing and revoking are audited first (record_audit order_device_paired /
+// order_device_changed: business and device ids, never the code or label);
+// without the row nothing changes (500 audit_failed).
 import { NextResponse } from "next/server"
+import { auditFailedResponse, recordOperatorAudit } from "@/lib/operator-audit"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { isUuid } from "@/lib/zones/validate"
@@ -50,6 +54,14 @@ export async function POST(request: Request) {
   if (label.length > LABEL_MAX) return NextResponse.json({ error: "invalid_label" }, { status: 400 })
 
   const admin = createAdminClient()
+  const audit = await recordOperatorAudit(admin, {
+    action: "order_device_paired",
+    actorUserId: guard.admin.userId,
+    businessId: b.business_id,
+    detail: { labelled: label.length > 0 },
+  })
+  if (!audit.ok) return auditFailedResponse()
+
   const { data, error } = await admin.rpc("create_order_device_pairing", {
     p_business_id: b.business_id,
     p_label: label || null,
@@ -78,6 +90,14 @@ export async function PATCH(request: Request) {
   if (!isUuid(b.business_id) || !isUuid(b.device_id)) return NextResponse.json({ error: "invalid_body" }, { status: 400 })
 
   const admin = createAdminClient()
+  const audit = await recordOperatorAudit(admin, {
+    action: "order_device_changed",
+    actorUserId: guard.admin.userId,
+    businessId: b.business_id,
+    detail: { device_id: b.device_id, change: "revoked" },
+  })
+  if (!audit.ok) return auditFailedResponse()
+
   const { data, error } = await admin
     .from("order_devices")
     .update({ revoked_at: new Date().toISOString() })

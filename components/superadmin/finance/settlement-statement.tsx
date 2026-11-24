@@ -217,7 +217,9 @@ function StatementBody({ st }: { st: Statement }) {
                   <TableRow key={`${l.order_number}-${l.kind}-${i}`}>
                     <TableCell className="font-mono text-xs">{l.order_number || "—"}</TableCell>
                     <TableCell className="whitespace-nowrap tabular-nums">{formatRomeDateTime(l.occurred_at)}</TableCell>
-                    <TableCell className={cn(l.kind === "reversal" && "text-destructive")}>{s.kinds[l.kind]}</TableCell>
+                    <TableCell className={cn((l.kind === "reversal" || l.kind === "waiver") && "text-destructive", l.kind === "cap_adjustment" && "text-muted-foreground")}>
+                      {s.kinds[l.kind]}
+                    </TableCell>
                     <TableCell>{s.methods[l.method]}</TableCell>
                     <Cents cents={l.amount_cents} />
                     <Cents cents={l.base_cents} />

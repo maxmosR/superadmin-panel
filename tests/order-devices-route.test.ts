@@ -13,11 +13,19 @@ const state = {
   updates: [] as Array<{ values: Record<string, unknown>; filters: Array<[string, string, unknown]> }>,
   updated: [{ id: "d1" }] as Array<{ id: string }>,
   selects: [] as string[],
+  audits: [] as Array<Record<string, unknown>>,
+  auditError: null as { code: string } | null,
+  order: [] as string[],
 }
 
 vi.mock("@/lib/supabase-admin", () => ({
   createAdminClient: () => ({
     rpc: async (fn: string, args: Record<string, unknown>) => {
+      state.order.push(fn)
+      if (fn === "record_audit") {
+        state.audits.push(args)
+        return state.auditError ? { data: null, error: state.auditError } : { data: "audit-1", error: null }
+      }
       state.rpc.push({ fn, args })
       return state.rpcResult
     },
@@ -34,6 +42,7 @@ vi.mock("@/lib/supabase-admin", () => ({
           return q
         },
         update: (v: Record<string, unknown>) => {
+          state.order.push("update")
           values = v
           return q
         },
@@ -70,6 +79,9 @@ beforeEach(() => {
   state.updates = []
   state.updated = [{ id: "d1" }]
   state.selects = []
+  state.audits = []
+  state.auditError = null
+  state.order = []
 })
 
 describe("/api/businesses/order-devices", () => {
@@ -118,6 +130,49 @@ describe("/api/businesses/order-devices", () => {
         ["is", "revoked_at", null],
       ]),
     )
+  })
+
+  it("audits a pairing first, ids only (no code, no label)", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {})
+    await POST(json("POST", { business_id: BIZ, label: "Mario's tablet" }))
+    expect(state.order).toEqual(["record_audit", "create_order_device_pairing"])
+    expect(state.audits).toEqual([
+      {
+        p_action: "order_device_paired",
+        p_actor: "op-1",
+        p_subject_user_id: null,
+        p_request_id: null,
+        p_detail: { source: "superadmin-panel", business_id: BIZ, labelled: true },
+      },
+    ])
+    expect(JSON.stringify(state.audits)).not.toMatch(/Mario|ABCDE/)
+  })
+
+  it("creates no pairing code when the audit write fails", async () => {
+    state.auditError = { code: "22P02" }
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const res = await POST(json("POST", { business_id: BIZ }))
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: "audit_failed" })
+    expect(state.rpc).toHaveLength(0)
+  })
+
+  it("audits a revoke first (order_device_changed with the device id)", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {})
+    await PATCH(json("PATCH", { business_id: BIZ, device_id: DEV }))
+    expect(state.order).toEqual(["record_audit", "update"])
+    expect(state.audits[0]).toMatchObject({
+      p_action: "order_device_changed",
+      p_detail: { source: "superadmin-panel", business_id: BIZ, device_id: DEV, change: "revoked" },
+    })
+  })
+
+  it("revokes nothing when the audit write fails", async () => {
+    state.auditError = { code: "22P02" }
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const res = await PATCH(json("PATCH", { business_id: BIZ, device_id: DEV }))
+    expect(res.status).toBe(500)
+    expect(state.updates).toHaveLength(0)
   })
 
   it("answers 404 for a device of another restaurant", async () => {

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
-import { CALC_MODES, CODE_RE, RATE_FIELDS, countUsingDefaults, parsePhone, parseRate, type CalcMode, type ProviderLink } from "@/lib/providers"
+import { isUuid } from "@/lib/zones/validate"
+import { auditFailedResponse, recordOperatorAudit } from "@/lib/operator-audit"
+import { CALC_MODES, CODE_RE, parseIconUrl, RATE_FIELDS, countUsingDefaults, parsePhone, parseRate, type CalcMode, type ProviderLink } from "@/lib/providers"
 
 export const dynamic = "force-dynamic"
 
@@ -12,7 +14,17 @@ export const dynamic = "force-dynamic"
  *   POST  /api/providers  create one
  *   PATCH /api/providers  update one by id (providers are disabled, never
  *                         deleted: invoices reference them)
+ *
+ * Creates and updates are audited first (record_audit "provider_changed":
+ * provider id / code and the changed column names); without the row nothing
+ * is written (500 audit_failed). Database errors answer stable codes and are
+ * logged by code only.
  */
+
+function dbFailed(event: string, code: string | null | undefined, error: string) {
+  console.error(JSON.stringify({ event, code: code ?? null }))
+  return NextResponse.json({ error }, { status: 500 })
+}
 
 const COLUMNS =
   "id, code, name, calc_mode, is_active, is_mandatory, icon_url, sort_order, default_fee_rate, default_iva_rate, " +
@@ -35,6 +47,7 @@ function toRow(body: Body, creating: boolean): Record<string, unknown> {
   if (creating || "name" in body) {
     const name = String(body.name ?? "").trim()
     if (!name) throw new Error("name is required")
+    if (name.length > 80) throw new Error("name must be at most 80 characters")
     row.name = name
   }
   if (creating || "calc_mode" in body) {
@@ -44,7 +57,7 @@ function toRow(body: Body, creating: boolean): Record<string, unknown> {
   }
   if ("is_active" in body) row.is_active = !!body.is_active
   if ("is_mandatory" in body) row.is_mandatory = !!body.is_mandatory
-  if ("icon_url" in body) row.icon_url = String(body.icon_url ?? "").trim() || null
+  if ("icon_url" in body) row.icon_url = parseIconUrl(body.icon_url)
   if ("sort_order" in body) {
     const n = Number(body.sort_order)
     if (!Number.isInteger(n)) throw new Error("sort_order must be a whole number")
@@ -75,7 +88,7 @@ export async function GET() {
       .from("business_providers")
       .select("business_id, provider_id, is_enabled, fee_rate, iva_rate, stripe_fee_rate, stripe_fixed_fee, tax_rate"),
   ])
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbFailed("providers_read_failed", error.code, "lookup_failed")
   if (bizErr || linkErr) {
     // The list still works without the counts; log codes only.
     console.error(JSON.stringify({ event: "provider_usage_failed", code: (bizErr ?? linkErr)?.code ?? null }))
@@ -107,11 +120,17 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient()
+  const audit = await recordOperatorAudit(supabase, {
+    action: "provider_changed",
+    actorUserId: guard.admin.userId,
+    detail: { operation: "create", provider_code: String(row.code), fields: Object.keys(row).sort() },
+  })
+  if (!audit.ok) return auditFailedResponse()
+
   const { data, error } = await supabase.from("providers").insert(row).select(COLUMNS).single()
   if (error) {
-    const status = error.code === "23505" ? 409 : 500
-    const message = error.code === "23505" ? `A provider with code "${row.code}" already exists` : error.message
-    return NextResponse.json({ error: message }, { status })
+    if (error.code === "23505") return NextResponse.json({ error: `A provider with code "${row.code}" already exists` }, { status: 409 })
+    return dbFailed("provider_create_failed", error.code, "create_failed")
   }
   return NextResponse.json({ provider: data }, { status: 201 })
 }
@@ -121,7 +140,7 @@ export async function PATCH(request: Request) {
   if (guard.response) return guard.response
 
   const body = await readJson(request)
-  if (!body || typeof body.id !== "string") {
+  if (!body || !isUuid(body.id)) {
     return NextResponse.json({ error: "id is required" }, { status: 400 })
   }
 
@@ -133,11 +152,19 @@ export async function PATCH(request: Request) {
   }
   // The code is what invoices store; it is fixed once created.
   if (!Object.keys(row).length) return NextResponse.json({ error: "Nothing to update" }, { status: 400 })
+  const fields = Object.keys(row).sort()
   row.updated_at = new Date().toISOString()
 
   const supabase = createAdminClient()
+  const audit = await recordOperatorAudit(supabase, {
+    action: "provider_changed",
+    actorUserId: guard.admin.userId,
+    detail: { operation: "update", provider_id: body.id, fields },
+  })
+  if (!audit.ok) return auditFailedResponse()
+
   const { data, error } = await supabase.from("providers").update(row).eq("id", body.id).select(COLUMNS).maybeSingle()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbFailed("provider_update_failed", error.code, "update_failed")
   if (!data) return NextResponse.json({ error: "Provider not found" }, { status: 404 })
   return NextResponse.json({ provider: data })
 }

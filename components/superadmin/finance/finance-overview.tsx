@@ -25,6 +25,7 @@ import {
   formatRateBps,
   nameMatches,
   overviewTotals,
+  payOutcome,
   presetRange,
   type FinanceOverviewRow,
   type Settlement,
@@ -126,6 +127,10 @@ export function FinanceOverview({
 
   const dateFmt = useMemo(() => new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: ROME_TZ }), [])
   const monthFmt = useMemo(() => new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric", timeZone: "UTC" }), [])
+  const dateTimeFmt = useMemo(
+    () => new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: ROME_TZ }),
+    [],
+  )
   const period = (s: Settlement) => {
     // period_end is exclusive: show the last day inside it.
     const end = new Date(new Date(s.period_end).getTime() - 1)
@@ -166,13 +171,15 @@ export function FinanceOverview({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "pay", settlement_id: s.id, expected_version: s.version }),
       })
-      const j = await res.json().catch(() => ({}))
-      if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as Record<string, unknown>
+      const outcome = payOutcome(res.status, j)
+      if (outcome === "error") {
         setSError(financeError(t, j, res.status))
         if (res.status === 409) void loadSettlements(filter)
         return
       }
-      afterAction(fmt(t.finance.settlements.paid, { name }))
+      const s2 = t.finance.settlements
+      afterAction(fmt(outcome === "adopted" ? s2.paidAdopted : outcome === "submitted" ? s2.submitted : s2.paid, { name }))
     } catch {
       setSError(t.common.network)
     } finally {
@@ -479,8 +486,25 @@ export function FinanceOverview({
                         </TableCell>
                         <TableCell>
                           <StatusBadge status={s.status} t={t} />
+                          {s.status === "processing" && (
+                            <div className="mt-1 max-w-56 text-xs text-muted-foreground">
+                              {t.finance.settlements.confirming}
+                              {s.reconciled_at && <> · {fmt(t.finance.settlements.lastChecked, { time: dateTimeFmt.format(new Date(s.reconciled_at)) })}</>}
+                            </div>
+                          )}
                           {s.failure_reason && s.status === "failed" && (
                             <div className="mt-1 max-w-56 text-xs text-destructive">{fmt(t.finance.settlements.failure, { reason: s.failure_reason })}</div>
+                          )}
+                          {s.status === "failed" && s.stripe_payout_id && (
+                            <div className="max-w-56 font-mono text-xs break-all text-muted-foreground">{fmt(t.finance.settlements.failedPayout, { id: s.stripe_payout_id })}</div>
+                          )}
+                          {s.payment_started_at && s.status !== "pending_approval" && s.status !== "cancelled" && (
+                            <div className="mt-1 max-w-56 text-xs text-muted-foreground">
+                              {fmt(t.finance.settlements.startedBy, {
+                                who: s.payment_started_by_email ?? t.finance.settlements.startedByUnknown,
+                                time: dateTimeFmt.format(new Date(s.payment_started_at)),
+                              })}
+                            </div>
                           )}
                           {s.cancel_reason && s.status === "cancelled" && (
                             <div className="mt-1 max-w-56 text-xs text-muted-foreground">{fmt(t.finance.settlements.cancelReasonShown, { reason: s.cancel_reason })}</div>

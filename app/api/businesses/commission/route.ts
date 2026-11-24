@@ -3,9 +3,14 @@
 //   PUT { business_id, rate_percent: 0–100 (≤ 2 decimals), monthly_cap_eur: ≥ 0 (≤ 2 decimals) | null }
 //     → the same shape. Written only through set_commission_settings (service
 //       role, this operator as the actor). No row means 0 % and no cap.
+// Every PUT is audited first (record_audit "commission_changed": business id,
+// new rate_bps and cap; lib/operator-audit.ts); without the row nothing is
+// written (500 audit_failed). set_commission_settings also keeps its own
+// commission_settings_history.
 // Percent and euro are parsed from their decimal string into integer basis
 // points and cents (lib/finance.ts), never through float maths.
 import { NextResponse } from "next/server"
+import { auditFailedResponse, recordOperatorAudit } from "@/lib/operator-audit"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { isUuid } from "@/lib/zones/validate"
@@ -60,6 +65,14 @@ export async function PUT(request: Request) {
   }
 
   const admin = createAdminClient()
+  const audit = await recordOperatorAudit(admin, {
+    action: "commission_changed",
+    actorUserId: guard.admin.userId,
+    businessId: b.business_id,
+    detail: { rate_bps: rateBps, monthly_cap_cents: capCents },
+  })
+  if (!audit.ok) return auditFailedResponse()
+
   const { data, error } = await admin.rpc("set_commission_settings", {
     p_business_id: b.business_id,
     p_actor_id: guard.admin.userId,
@@ -71,7 +84,7 @@ export async function PUT(request: Request) {
     if (error.message === "invalid_payload") return NextResponse.json({ error: "invalid_payload" }, { status: 400 })
     if (error.message === "forbidden") return NextResponse.json({ error: "not_operator" }, { status: 403 })
     if (MISSING.has(error.code)) return NextResponse.json({ error: "finance_unavailable" }, { status: 503 })
-    console.error(JSON.stringify({ event: "commission_write_failed", business: b.business_id, code: error.code ?? null }))
+    console.error(JSON.stringify({ event: "commission_write_failed", business: b.business_id, audit: audit.id, code: error.code ?? null }))
     return NextResponse.json({ error: "save_failed" }, { status: 500 })
   }
   console.info(JSON.stringify({ event: "commission_set", operator: guard.admin.userId, business: b.business_id }))

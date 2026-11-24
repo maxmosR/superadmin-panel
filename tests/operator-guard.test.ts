@@ -45,6 +45,7 @@ import * as financeSettlements from "@/app/api/finance/settlements/route"
 import * as financeStatement from "@/app/api/finance/settlements/statement/route"
 import * as financeBusiness from "@/app/api/finance/business/route"
 import * as financeBalance from "@/app/api/finance/balance/route"
+import * as financeWaive from "@/app/api/finance/commission/waive/route"
 
 const lookup = vi.mocked(lookupOperator)
 const adminClient = vi.mocked(createAdminClient)
@@ -281,6 +282,13 @@ adminHandlers.push(
     "GET /api/finance/business",
     () => financeBusiness.GET(new Request(`http://localhost/api/finance/business?business_id=${BIZ}&from=2026-11-01&to=2026-11-23`)),
   ],
+  [
+    "POST /api/finance/commission/waive",
+    () =>
+      financeWaive.POST(
+        jsonRequest("POST", "http://localhost/api/finance/commission/waive", { business_id: BIZ, order_id: SETTLEMENT, reason: "cash not collected" }),
+      ),
+  ],
   ["GET /api/businesses/commission", () => commission.GET(new Request(`http://localhost/api/businesses/commission?business_id=${BIZ}`))],
   [
     "PUT /api/businesses/commission",
@@ -295,7 +303,7 @@ const allHandlers: Array<[string, () => Promise<Response>]> = [
   ...adminHandlers,
   ["GET /api/me", () => me.GET()],
   // Forwards to the operator-create-payout-account Edge Function with the
-  // operator's own JWT: never a service-role client.
+  // operator's own JWT; the service-role client only writes the audit row.
   [
     "POST /api/businesses/payout-account",
     () => payoutAccount.POST(jsonRequest("POST", "http://localhost/api/businesses/payout-account", { business_id: BIZ })),

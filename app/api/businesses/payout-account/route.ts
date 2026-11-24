@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireOperator } from "@/lib/require-operator"
+import { auditFailedResponse, recordOperatorAudit } from "@/lib/operator-audit"
+import { createAdminClient } from "@/lib/supabase-admin"
 import { getSupabaseClient } from "@/lib/supabase-server"
 
 export const dynamic = "force-dynamic"
@@ -13,7 +15,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // The Stripe call happens in the Edge Function `operator-create-payout-account`
 // (the platform secret key lives only in Edge secrets). This route forwards the
 // operator's own session token; the function checks platform_admins again.
-// No service-role client here.
+// The service-role client is used for one thing only: the audit row
+// (record_audit "payout_account_created", business id), written before the
+// call; without it nothing is sent (500 audit_failed).
 // ---------------------------------------------------------------------------
 export async function POST(req: Request) {
   const guard = await requireOperator()
@@ -33,6 +37,13 @@ export async function POST(req: Request) {
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !anon) return NextResponse.json({ error: "server_misconfigured" }, { status: 500 })
 
+  const audit = await recordOperatorAudit(createAdminClient(), {
+    action: "payout_account_created",
+    actorUserId: guard.admin.userId,
+    businessId: body.business_id,
+  })
+  if (!audit.ok) return auditFailedResponse()
+
   let res: Response
   try {
     res = await fetch(`${url}/functions/v1/operator-create-payout-account`, {
@@ -44,6 +55,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "payment_gateway_unavailable" }, { status: 503 })
   }
   const payload = await res.json().catch(() => ({ error: "server_error" }))
-  console.log(JSON.stringify({ event: "payout_account_create", status: res.status }))
+  console.log(
+    JSON.stringify({ event: "payout_account_create", operator: guard.admin.userId, business: body.business_id, audit: audit.id, status: res.status }),
+  )
   return NextResponse.json(payload, { status: res.status })
 }

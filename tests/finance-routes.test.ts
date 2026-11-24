@@ -22,13 +22,23 @@ const json = (method: string, url: string, body: unknown) =>
 
 type RpcResult = { data: unknown; error: { message: string; code?: string } | null }
 const rpc = vi.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>()
+// record_audit calls go to `audit`, every other RPC to `rpc`, in one ordered log.
+const audit = vi.fn<(args: Record<string, unknown>) => Promise<RpcResult>>()
+const calls: string[] = []
+const routedRpc = (name: string, args: Record<string, unknown>) => {
+  calls.push(name)
+  return name === "record_audit" ? audit(args) : rpc(name, args)
+}
 const fetchMock = vi.fn()
 
 beforeEach(() => {
   rpc.mockReset()
+  audit.mockReset()
+  audit.mockResolvedValue({ data: "audit-1", error: null })
+  calls.length = 0
   fetchMock.mockReset()
   vi.mocked(createAdminClient).mockReset()
-  vi.mocked(createAdminClient).mockReturnValue({ rpc } as never)
+  vi.mocked(createAdminClient).mockReturnValue({ rpc: routedRpc } as never)
   vi.mocked(lookupOperator).mockResolvedValue({ status: "operator", admin: { userId: OP, email: null } })
   vi.mocked(getSupabaseClient).mockResolvedValue({
     auth: { getSession: async () => ({ data: { session: { access_token: "operator-jwt" } } }) },
@@ -103,6 +113,34 @@ describe("GET /api/finance/settlements", () => {
     const body = await res.json()
     expect(body.settlements[0]).toMatchObject({ id: SID, business_name: "Hosuto", payout_cents: 1500, version: 2 })
   })
+
+  it("adds who started each payment (operator email) and the new columns", async () => {
+    const settlementsQuery: Record<string, unknown> = {}
+    for (const m of ["select", "eq", "order"]) settlementsQuery[m] = () => settlementsQuery
+    settlementsQuery.limit = async () => ({
+      data: [
+        { id: SID, business_id: BIZ, status: "processing", version: 3, payment_started_by: OP, payment_started_at: "2026-11-24T09:00:00Z", reconciled_at: "2026-11-24T09:20:00Z" },
+        { id: BIZ, business_id: BIZ, status: "pending_approval", version: 1, payment_started_by: null },
+      ],
+      error: null,
+    })
+    const bizQuery = { select: () => bizQuery, in: async () => ({ data: [{ business_id: BIZ, business_name: "Hosuto", slug: "hosuto" }], error: null }) }
+    const opsIn = vi.fn(async () => ({ data: [{ user_id: OP, email: "ops@birraora.it" }], error: null }))
+    const opsQuery = { select: () => opsQuery, in: opsIn }
+    vi.mocked(createAdminClient).mockReturnValue({
+      from: (table: string) => (table === "settlements" ? settlementsQuery : table === "platform_admins" ? opsQuery : bizQuery),
+    } as never)
+    const res = await settlements.GET(new Request("http://localhost/api/finance/settlements?status=all"))
+    const body = await res.json()
+    expect(opsIn).toHaveBeenCalledWith("user_id", [OP])
+    expect(body.settlements[0]).toMatchObject({
+      payment_started_by: OP,
+      payment_started_by_email: "ops@birraora.it",
+      payment_started_at: "2026-11-24T09:00:00Z",
+      reconciled_at: "2026-11-24T09:20:00Z",
+    })
+    expect(body.settlements[1]).toMatchObject({ payment_started_by: null, payment_started_by_email: null })
+  })
 })
 
 describe("POST /api/finance/settlements", () => {
@@ -140,6 +178,26 @@ describe("POST /api/finance/settlements", () => {
     expect(createAdminClient).not.toHaveBeenCalled()
   })
 
+  it("passes adopted_payout through on 200", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ settlement: { id: SID, status: "paid", version: 4 }, adopted_payout: true }), { status: 200 }))
+    const res = await post({ action: "pay", settlement_id: SID, expected_version: 3 })
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j.adopted_payout).toBe(true)
+    expect(j.settlement).toMatchObject({ status: "paid", version: 4 })
+  })
+
+  it("keeps record_failed (Stripe accepted, recording failed) with the normalised processing settlement", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: "record_failed", settlement: { id: SID, status: "processing", version: "4", payout_cents: "1500" } }), { status: 500 }),
+    )
+    const res = await post({ action: "pay", settlement_id: SID, expected_version: 3 })
+    expect(res.status).toBe(500)
+    const j = await res.json()
+    expect(j.error).toBe("record_failed")
+    expect(j.settlement).toMatchObject({ status: "processing", version: 4, payout_cents: 1500 })
+  })
+
   it("passes the Edge Function's errors through", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "insufficient_available_balance", available_cents: 4200 }), { status: 409 }))
     const res = await post({ action: "pay", settlement_id: SID, expected_version: 2 })
@@ -159,6 +217,40 @@ describe("POST /api/finance/settlements", () => {
     const res = await post({ action: "cancel", settlement_id: SID, expected_version: 1, reason: " wrong rate " })
     expect(res.status).toBe(200)
     expect(rpc).toHaveBeenCalledWith("settlement_cancel", { p_id: SID, p_expected_version: 1, p_actor_id: OP, p_reason: "wrong rate" })
+  })
+
+  it("audits a cancel first (settlement_cancelled, ids only, no reason text)", async () => {
+    rpc.mockResolvedValue({ data: { id: SID, status: "cancelled", version: 2 }, error: null })
+    await post({ action: "cancel", settlement_id: SID, expected_version: 1, reason: "customer Mario Rossi complained" })
+    expect(calls).toEqual(["record_audit", "settlement_cancel"])
+    expect(audit).toHaveBeenCalledWith({
+      p_action: "settlement_cancelled",
+      p_actor: OP,
+      p_subject_user_id: null,
+      p_request_id: null,
+      p_detail: { source: "superadmin-panel", settlement_id: SID, expected_version: 1 },
+    })
+    expect(JSON.stringify(audit.mock.calls)).not.toContain("Mario")
+  })
+
+  it("cancels nothing when the audit write fails", async () => {
+    audit.mockResolvedValue({ data: null, error: { message: "invalid input value for enum", code: "22P02" } })
+    const err = vi.spyOn(console, "error").mockImplementation(() => {})
+    const res = await post({ action: "cancel", settlement_id: SID, expected_version: 1, reason: "x" })
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: "audit_failed" })
+    expect(rpc).not.toHaveBeenCalled()
+    err.mockRestore()
+  })
+
+  it("pay writes no audit row of its own (SQL does) and logs the operator id", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ settlement: { id: SID, status: "processing", version: 3 } }), { status: 200 }))
+    const log = vi.spyOn(console, "log").mockImplementation(() => {})
+    await post({ action: "pay", settlement_id: SID, expected_version: 2 })
+    expect(audit).not.toHaveBeenCalled()
+    const line = JSON.parse(String(log.mock.calls.at(-1)?.[0]))
+    expect(line).toMatchObject({ event: "settlement_pay", operator: OP, settlement: SID, status: 200 })
+    log.mockRestore()
   })
 
   it.each([
@@ -205,6 +297,29 @@ describe("/api/businesses/commission", () => {
       p_monthly_cap_cents: 25029,
     })
     expect(await res.json()).toEqual({ business_id: BIZ, rate_bps: 1255, monthly_cap_cents: 25029, updated_at: "2026-11-23T10:00:00Z" })
+  })
+
+  it("audits the change first (commission_changed: business, new rate and cap)", async () => {
+    rpc.mockResolvedValue({ data: { business_id: BIZ, rate_bps: 1255, monthly_cap_cents: 25029, updated_at: null }, error: null })
+    await put({ business_id: BIZ, rate_percent: 12.55, monthly_cap_eur: 250.29 })
+    expect(calls).toEqual(["record_audit", "set_commission_settings"])
+    expect(audit).toHaveBeenCalledWith({
+      p_action: "commission_changed",
+      p_actor: OP,
+      p_subject_user_id: null,
+      p_request_id: null,
+      p_detail: { source: "superadmin-panel", business_id: BIZ, rate_bps: 1255, monthly_cap_cents: 25029 },
+    })
+  })
+
+  it("changes nothing when the audit write fails", async () => {
+    audit.mockResolvedValue({ data: null, error: { message: "boom", code: "XX000" } })
+    const err = vi.spyOn(console, "error").mockImplementation(() => {})
+    const res = await put({ business_id: BIZ, rate_percent: 15, monthly_cap_eur: null })
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: "audit_failed" })
+    expect(rpc).not.toHaveBeenCalled()
+    err.mockRestore()
   })
 
   it("an empty cap means no cap", async () => {

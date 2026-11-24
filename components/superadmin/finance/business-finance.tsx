@@ -1,5 +1,6 @@
 "use client"
 
+import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { Download, Loader2 } from "lucide-react"
@@ -8,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useI18n } from "@/lib/i18n/client"
 import { financeError } from "@/lib/finance-error"
 import { cn } from "@/lib/utils"
@@ -19,15 +21,19 @@ import {
   formatEuroCents,
   formatRateBps,
   formatRomeDateTime,
+  isCapped,
   presetRange,
   type BusinessDetail,
   type BusinessOrderLine,
 } from "@/lib/finance"
 import { ConsoleShell, PageHead } from "../console-shell"
+import { Field } from "../field"
 import { PeriodPicker, Stat, type Range } from "./period-picker"
 
 // One restaurant's money in a period, order by order: the same columns as the
-// Finance overview row, one line per counted order or refund.
+// Finance overview row, one line per ledger entry (order, refund, waiver, cap
+// adjustment). A cash order's commission can be waived from here (operator,
+// with a reason): POST /api/finance/commission/waive.
 export function BusinessFinanceView({
   businessId,
   adminEmail = null,
@@ -49,6 +55,9 @@ export function BusinessFinanceView({
   const [data, setData] = useState<BusinessDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [notice, setNotice] = useState("")
+  const [waiving, setWaiving] = useState<BusinessOrderLine | null>(null)
+  const [waiveBusy, setWaiveBusy] = useState(false)
 
   const load = useCallback(
     async (range: Range) => {
@@ -84,6 +93,41 @@ export function BusinessFinanceView({
   const totals = businessDetailTotals(lines)
   const cap = data ? capProgress(data.cap.fee_cents, data.settings.monthly_cap_cents, data.cap.cap_reached_at) : null
   const dash = loading || !data
+
+  const waive = async (line: BusinessOrderLine, reason: string): Promise<string | null> => {
+    const w = t.finance.business.waive
+    setWaiveBusy(true)
+    setNotice("")
+    try {
+      const res = await fetch("/api/finance/commission/waive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ business_id: businessId, order_id: line.order_id, reason }),
+      })
+      const j = (await res.json().catch(() => ({}))) as Record<string, unknown>
+      if (!res.ok) {
+        const code = typeof j.error === "string" ? j.error : ""
+        return w.errors[code] ?? financeError(t, j, res.status)
+      }
+      const order = line.order_number || "—"
+      const fee = formatEuroCents(typeof j.fee_cents_waived === "number" ? j.fee_cents_waived : 0)
+      const adjusted = typeof j.cap_adjusted_cents === "number" ? j.cap_adjusted_cents : 0
+      setNotice(
+        j.result === "noop"
+          ? fmt(w.noop, { order })
+          : adjusted > 0
+            ? fmt(w.doneAdjusted, { order, fee, adjusted: formatEuroCents(adjusted) })
+            : fmt(w.done, { order, fee }),
+      )
+      setWaiving(null)
+      void load(applied)
+      return null
+    } catch {
+      return t.common.network
+    } finally {
+      setWaiveBusy(false)
+    }
+  }
 
   const downloadCsv = () => {
     if (!data) return
@@ -139,6 +183,11 @@ export function BusinessFinanceView({
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {notice && (
+        <Alert className="mb-4">
+          <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
 
@@ -233,6 +282,9 @@ export function BusinessFinanceView({
                       <TableHead className="text-right">{b.cols.vat}</TableHead>
                       <TableHead className="text-right">{b.cols.stripe}</TableHead>
                       <TableHead className="text-right">{b.cols.net}</TableHead>
+                      <TableHead>
+                        <span className="sr-only">{b.waive.button}</span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -254,6 +306,7 @@ export function BusinessFinanceView({
                       <TableCell className={cn("text-right font-semibold whitespace-nowrap tabular-nums", totals.net_cents < 0 && "text-destructive")}>
                         {formatEuroCents(totals.net_cents)}
                       </TableCell>
+                      <TableCell />
                     </TableRow>
                   </TableFooter>
                 </Table>
@@ -263,25 +316,28 @@ export function BusinessFinanceView({
           )}
         </CardContent>
       </Card>
+
+      <WaiveDialog line={waiving} busy={waiveBusy} onClose={() => setWaiving(null)} onConfirm={(reason) => (waiving ? waive(waiving, reason) : Promise.resolve(null))} />
     </ConsoleShell>
   )
 
   function renderLine(l: BusinessOrderLine) {
-    const refund = l.kind === "reversal"
-    const capped = l.fee_cents !== l.full_fee_cents
+    const notOrder = l.kind !== "fee"
+    const capped = isCapped(l)
+    const title = l.kind === "waiver" || l.kind === "cap_adjustment" ? b.kindTitles[l.kind] : undefined
     return (
-      <TableRow key={`${l.order_id}:${l.kind}`} className={cn(refund && "bg-muted/40")}>
+      <TableRow key={l.entry_id || `${l.order_id}:${l.kind}`} className={cn(notOrder && "bg-muted/40")}>
         <TableCell className="font-medium whitespace-nowrap tabular-nums">
           {l.order_number || "—"}
-          {refund && (
-            <Badge variant="outline" className="ml-2">
-              {b.kinds.reversal}
+          {notOrder && (
+            <Badge variant="outline" className={cn("ml-2", l.kind === "waiver" && "border-amber-600/40 text-amber-700")} title={title}>
+              {b.kinds[l.kind]}
             </Badge>
           )}
         </TableCell>
         <TableCell className="whitespace-nowrap tabular-nums">{l.occurred_at ? formatRomeDateTime(l.occurred_at) : "—"}</TableCell>
         <TableCell>{b.methods[l.method]}</TableCell>
-        <Money cents={l.gross_cents} quiet={refund} />
+        <Money cents={l.gross_cents} quiet={l.gross_cents === 0} />
         <Money cents={l.cash_cents} quiet={l.cash_cents === 0} />
         <Money cents={l.card_cents} quiet={l.card_cents === 0} />
         <Money cents={l.refund_cents} quiet={l.refund_cents === 0} />
@@ -308,9 +364,91 @@ export function BusinessFinanceView({
           <Money cents={l.stripe_fee_cents} quiet={l.stripe_fee_cents === 0} />
         )}
         <TableCell className={cn("text-right whitespace-nowrap tabular-nums", l.net_cents < 0 && "text-destructive")}>{formatEuroCents(l.net_cents)}</TableCell>
+        <TableCell className="text-right">
+          {l.waivable && l.fee_cents > 0 && (
+            <Button type="button" size="sm" variant="ghost" onClick={() => setWaiving(l)} disabled={waiveBusy}>
+              {b.waive.button}
+            </Button>
+          )}
+        </TableCell>
       </TableRow>
     )
   }
+}
+
+/** Confirm + reason for waiving one cash order's commission. */
+function WaiveDialog({
+  line,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  line: BusinessOrderLine | null
+  busy: boolean
+  onClose: () => void
+  onConfirm: (reason: string) => Promise<string | null>
+}) {
+  const { t, fmt } = useI18n()
+  const w = t.finance.business.waive
+  const [reason, setReason] = useState("")
+  const [error, setError] = useState("")
+  const [openedFor, setOpenedFor] = useState<string | null>(null)
+
+  // Fresh form each time it opens for a line.
+  if ((line?.entry_id ?? null) !== openedFor) {
+    setOpenedFor(line?.entry_id ?? null)
+    setReason("")
+    setError("")
+  }
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const r = reason.trim()
+    if (!r || r.length > 500) {
+      setError(w.errors.invalid_reason)
+      return
+    }
+    setError("")
+    const err = await onConfirm(r)
+    if (err) setError(err)
+  }
+
+  const order = line?.order_number || "—"
+  return (
+    <Dialog open={!!line} onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={submit} noValidate className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>{fmt(w.title, { order })}</DialogTitle>
+            <DialogDescription>{fmt(w.body, { fee: formatEuroCents(line?.fee_cents ?? 0) })}</DialogDescription>
+          </DialogHeader>
+          <Field label={w.reason} hint={w.reasonHint} error={error || undefined}>
+            {(p) => (
+              <textarea
+                {...p}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                maxLength={500}
+                rows={3}
+                disabled={busy}
+                placeholder={w.reasonPlaceholder}
+                className="w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm"
+              />
+            )}
+          </Field>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+              {w.back}
+            </Button>
+            <Button type="submit" variant="destructive" disabled={busy}>
+              {busy && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
+              {busy ? w.working : w.confirm}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function Money({ cents, strong, quiet }: { cents: number; strong?: boolean; quiet?: boolean }) {

@@ -360,11 +360,18 @@ export interface Settlement {
   failure_reason: string | null
   paid_at: string | null
   cancel_reason: string | null
+  /** The operator who started the latest payment attempt (settlement_start_payment). */
+  payment_started_by: string | null
+  payment_started_at: string | null
+  /** Last time order-worker checked this processing settlement against Stripe. */
+  reconciled_at: string | null
+  /** payment_started_by's sign-in email, filled by GET /api/finance/settlements (operators only). */
+  payment_started_by_email?: string | null
   created_at: string
 }
 
 export const SETTLEMENT_COLUMNS =
-  "id, business_id, period_start, period_end, month, status, orders_count, card_orders, cash_orders, card_gross_cents, card_refunds_cents, card_net_cents, cash_cents, fee_card_cents, fee_cash_cents, fee_cents, base_cents, vat_bps, vat_cents, stripe_fee_cents, carry_in_cents, owed_cents, payout_cents, deficit_cents, version, approved_by, approved_at, payout_attempt, stripe_transfer_id, stripe_payout_id, failure_reason, paid_at, cancel_reason, created_at"
+  "id, business_id, period_start, period_end, month, status, orders_count, card_orders, cash_orders, card_gross_cents, card_refunds_cents, card_net_cents, cash_cents, fee_card_cents, fee_cash_cents, fee_cents, base_cents, vat_bps, vat_cents, stripe_fee_cents, carry_in_cents, owed_cents, payout_cents, deficit_cents, version, approved_by, approved_at, payout_attempt, stripe_transfer_id, stripe_payout_id, failure_reason, paid_at, cancel_reason, payment_started_by, payment_started_at, reconciled_at, created_at"
 
 const SETTLEMENT_INT_COLS = [
   "orders_count",
@@ -396,6 +403,9 @@ const SETTLEMENT_TEXT_COLS = [
   "failure_reason",
   "paid_at",
   "cancel_reason",
+  "payment_started_by",
+  "payment_started_at",
+  "reconciled_at",
 ] as const
 
 export function normaliseSettlement(r: Record<string, unknown>, business?: { business_name?: unknown; slug?: unknown } | null): Settlement {
@@ -413,6 +423,24 @@ export function normaliseSettlement(r: Record<string, unknown>, business?: { bus
   for (const k of SETTLEMENT_INT_COLS) out[k] = toInt(r[k])
   for (const k of SETTLEMENT_TEXT_COLS) out[k] = typeof r[k] === "string" ? (r[k] as string) : null
   return out
+}
+
+/**
+ * What an Approve & pay answer means for the operator:
+ *   paid       200: paid out (or closed at 0 €)
+ *   adopted    200 with adopted_payout: Stripe had already paid this settlement
+ *              out (an earlier attempt); it is now recorded
+ *   submitted  500 record_failed: Stripe accepted the call but recording it
+ *              failed; the settlement stays `processing` until order-worker
+ *              reconciles it with Stripe. Not a failure, nothing to retry.
+ *   error      anything else
+ */
+export type PayOutcome = "paid" | "adopted" | "submitted" | "error"
+
+export function payOutcome(status: number, body: Record<string, unknown>): PayOutcome {
+  if (status >= 200 && status < 300) return body.adopted_payout === true ? "adopted" : "paid"
+  if (body.error === "record_failed") return "submitted"
+  return "error"
 }
 
 // ---------------------------------------------------------------------------
@@ -446,10 +474,29 @@ export function capProgress(feeCents: number, capCents: number | null, capReache
 // Settlement statement (settlement_statement(p_id) → jsonb)
 // ---------------------------------------------------------------------------
 
+/**
+ * commission_entries.kind:
+ *   fee             one per counted order
+ *   reversal        a refunded / lost-dispute card order (negative)
+ *   waiver          an operator-waived cash order (negative fee, no money moved)
+ *   cap_adjustment  cap room re-charged to a capped order after a reversal /
+ *                   waiver: amount, base, card and full fee are 0, only fee_cents
+ *                   (> 0) counts. Not an order.
+ */
+export const LEDGER_KINDS = ["fee", "reversal", "waiver", "cap_adjustment"] as const
+export type LedgerKind = (typeof LEDGER_KINDS)[number]
+
+/** An unknown kind is shown as a fee, as before (the database allows only these four). */
+export function ledgerKind(v: unknown): LedgerKind {
+  return (LEDGER_KINDS as readonly unknown[]).includes(v) ? (v as LedgerKind) : "fee"
+}
+
+export type LedgerKindLabels = Record<LedgerKind, string>
+
 export interface StatementLine {
   order_number: string
   occurred_at: string
-  kind: "fee" | "reversal"
+  kind: LedgerKind
   method: "card" | "cash"
   /** Order total (negative on a refund). */
   amount_cents: number
@@ -488,7 +535,7 @@ export function normaliseStatementLine(r: Record<string, unknown>): StatementLin
   return {
     order_number: r.order_number === null || r.order_number === undefined ? "" : String(r.order_number),
     occurred_at: String(r.occurred_at ?? ""),
-    kind: r.kind === "reversal" ? "reversal" : "fee",
+    kind: ledgerKind(r.kind),
     method: r.method === "cash" ? "cash" : "card",
     amount_cents: toInt(r.amount_cents),
     base_cents: toInt(r.base_cents),
@@ -525,9 +572,9 @@ export function normaliseStatement(raw: unknown): Statement | null {
   }
 }
 
-/** True when the monthly cap cut this line's commission. */
-export function isCapped(l: StatementLine): boolean {
-  return l.fee_cents !== l.full_fee_cents
+/** True when the monthly cap cut this order line's commission (only a fee line can be capped). */
+export function isCapped(l: Pick<StatementLine, "kind" | "fee_cents" | "full_fee_cents">): boolean {
+  return l.kind === "fee" && l.fee_cents !== l.full_fee_cents
 }
 
 const romeDay = new Intl.DateTimeFormat("it-IT", { timeZone: ROME_TZ, day: "2-digit", month: "2-digit", year: "numeric" })
@@ -579,7 +626,7 @@ export interface StatementCsvLabels {
   capped: string
   stripeFee: string
   card: string
-  kinds: { fee: string; reversal: string }
+  kinds: LedgerKindLabels
   methods: { card: string; cash: string }
   yes: string
 }
@@ -650,10 +697,12 @@ export function nameMatches(name: string, query: string): boolean {
 
 /** One ledger entry of the restaurant, with the same money columns as the overview. */
 export interface BusinessOrderLine {
+  /** commission_entries.id (an order can have several cap_adjustment lines). */
+  entry_id: string
   order_id: string
   order_number: string
   occurred_at: string
-  kind: "fee" | "reversal"
+  kind: LedgerKind
   method: "card" | "cash"
   /** Order total (0 on a refund line: refunds have their own column). */
   gross_cents: number
@@ -669,9 +718,12 @@ export interface BusinessOrderLine {
   stripe_fee_cents: number | null
   /** Card money − commission − IVA − Stripe fee for this line. */
   net_cents: number
+  /** Cash fee line: an operator can waive it (no waiver recorded for the order yet). */
+  waivable: boolean
 }
 
 export interface LedgerEntryRow {
+  id?: unknown
   order_id: unknown
   kind: unknown
   method: unknown
@@ -684,9 +736,16 @@ export interface LedgerEntryRow {
   fee_cents: unknown
 }
 
-/** A commission_entries row → a display line. `stripeFee` is the card_fees row's fee, if any. */
-export function businessOrderLine(e: LedgerEntryRow, orderNumber: string | null, stripeFee: number | null): BusinessOrderLine {
-  const kind = e.kind === "reversal" ? "reversal" : "fee"
+/**
+ * A commission_entries row → a display line. `stripeFee` is the card_fees
+ * row's fee, if any; `waived` says whether the order already has a waiver.
+ * Only a fee line is an order (counted, gross / cash / card money); a
+ * reversal moves card money back (refunds); a waiver takes the cash order's
+ * amount and fee back out (like the settlement's cash total); a cap
+ * adjustment only adds commission.
+ */
+export function businessOrderLine(e: LedgerEntryRow, orderNumber: string | null, stripeFee: number | null, waived = false): BusinessOrderLine {
+  const kind = ledgerKind(e.kind)
   const method = e.method === "cash" ? "cash" : "card"
   const amount = toInt(e.amount_cents)
   const cardMoney = toInt(e.card_cents)
@@ -695,13 +754,16 @@ export function businessOrderLine(e: LedgerEntryRow, orderNumber: string | null,
   // Stripe keeps its fee on a refund; only a captured card order carries one.
   const sfee = kind === "fee" && method === "card" ? stripeFee : 0
   return {
+    entry_id: String(e.id ?? ""),
     order_id: String(e.order_id ?? ""),
     order_number: orderNumber ?? "",
     occurred_at: String(e.occurred_at ?? ""),
     kind,
     method,
-    gross_cents: kind === "fee" ? amount : 0,
-    cash_cents: kind === "fee" && method === "cash" ? amount : 0,
+    // A waiver takes its cash order out of the cash total (negative amount),
+    // as settlement_build_next sums cash: sum(amount_cents) where method = 'cash'.
+    gross_cents: kind === "fee" || kind === "waiver" ? amount : 0,
+    cash_cents: (kind === "fee" || kind === "waiver") && method === "cash" ? amount : 0,
     card_cents: kind === "fee" && method === "card" ? amount : 0,
     refund_cents: kind === "reversal" ? -cardMoney : 0,
     base_cents: toInt(e.base_cents),
@@ -711,6 +773,7 @@ export function businessOrderLine(e: LedgerEntryRow, orderNumber: string | null,
     vat_cents: vat,
     stripe_fee_cents: sfee,
     net_cents: cardMoney - fee - vat - (sfee ?? 0),
+    waivable: kind === "fee" && method === "cash" && !waived,
   }
 }
 
@@ -797,7 +860,7 @@ export interface BusinessCsvLabels {
   vat: string
   stripe: string
   net: string
-  kinds: { fee: string; reversal: string }
+  kinds: LedgerKindLabels
   methods: { card: string; cash: string }
   yes: string
   pending: string
@@ -819,7 +882,7 @@ export function businessCsv(lines: BusinessOrderLine[], l: BusinessCsvLabels): s
     centsToCsv(x.base_cents),
     centsToCsv(x.rate_bps), // basis points / 100 = percent
     centsToCsv(x.fee_cents),
-    x.fee_cents !== x.full_fee_cents ? l.yes : "",
+    isCapped(x) ? l.yes : "",
     centsToCsv(x.vat_cents),
     x.stripe_fee_cents === null ? l.pending : centsToCsv(x.stripe_fee_cents),
     centsToCsv(x.net_cents),

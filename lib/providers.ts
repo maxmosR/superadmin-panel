@@ -131,3 +131,30 @@ export function parsePhone(v: unknown): string | null {
   if (!PHONE_RE.test(s)) throw new Error("Customer service number: digits, spaces and + * # ( ) - only (3–32 characters)")
   return s
 }
+
+const ICON_PATH_RE = /^\/(?!\/)[A-Za-z0-9._\-/]{1,200}$/
+
+/**
+ * A provider icon: an absolute https: URL, or a root-relative path served by
+ * the apps themselves (e.g. "/icons/glovo.png" from the admin panel's public/).
+ */
+export function parseIconUrl(v: unknown): string | null {
+  if (v === null || v === undefined) return null
+  if (typeof v !== "string") throw new Error("icon_url must be text")
+  const s = v.trim()
+  if (!s) return null
+  if (s.startsWith("/")) {
+    if (!ICON_PATH_RE.test(s) || s.includes("..")) throw new Error("icon_url must be an https:// URL or a path like /icons/name.png")
+    return s
+  }
+  let url: URL
+  try {
+    url = new URL(s)
+  } catch {
+    throw new Error("icon_url must be an https:// URL or a path like /icons/name.png")
+  }
+  if (s.length > 2048 || url.protocol !== "https:" || url.username || url.password) {
+    throw new Error("icon_url must be an https:// URL or a path like /icons/name.png")
+  }
+  return url.toString()
+}

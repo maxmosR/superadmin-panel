@@ -121,6 +121,11 @@ function withApiHeaders(res: NextResponse) {
   return res
 }
 
+// Runs on everything except Next's own build assets, the image optimizer and
+// the favicon. No extension-based skip: a path like /api/x.png or
+// /businesses/<id>/logo.svg still gets the CSRF / JSON checks and the CSP.
+// /api/* always runs the proxy. (This repo has no public/ folder; a file added
+// there must be listed here explicitly, by its exact path.)
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: ["/((?!_next/static/|_next/image$|favicon\\.ico$).*)"],
 }

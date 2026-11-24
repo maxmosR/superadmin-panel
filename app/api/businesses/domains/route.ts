@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { requireOperator } from "@/lib/require-operator"
 import { createAdminClient } from "@/lib/supabase-admin"
 import { normalizeDomain } from "@/lib/domains"
+import { auditFailedResponse, recordOperatorAudit } from "@/lib/operator-audit"
+import { isUuid } from "@/lib/zones/validate"
 
 export const dynamic = "force-dynamic"
 
@@ -11,7 +13,18 @@ export const dynamic = "force-dynamic"
  *
  * Nothing here ever leaves the server with a business_id attached to a public
  * response — this console is platform-admin only, gated by requireOperator() in every handler.
+ *
+ * Every add / change / removal is audited first (record_audit domain_added /
+ * domain_changed / domain_removed: business id and hostnames, which are not
+ * personal data); without the row nothing changes (500 audit_failed).
+ * Database errors answer stable codes (lookup_failed, create_failed,
+ * update_failed, delete_failed) and are logged by code only.
  */
+
+function dbFailed(event: string, businessId: string, code: string | null | undefined, error: string) {
+  console.error(JSON.stringify({ event, business: businessId, code: code ?? null }))
+  return NextResponse.json({ error }, { status: 500 })
+}
 
 type Body = Record<string, unknown>
 
@@ -68,7 +81,7 @@ export async function GET(request: Request) {
   if (guard.response) return guard.response
 
   const businessId = new URL(request.url).searchParams.get("business_id")
-  if (!businessId) return NextResponse.json({ error: "business_id is required" }, { status: 400 })
+  if (!isUuid(businessId)) return NextResponse.json({ error: "business_id is required" }, { status: 400 })
 
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -78,7 +91,7 @@ export async function GET(request: Request) {
     .order("is_primary", { ascending: false })
     .order("created_at", { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbFailed("domains_read_failed", businessId, error.code, "lookup_failed")
   return NextResponse.json({ domains: data ?? [] })
 }
 
@@ -93,7 +106,7 @@ export async function POST(request: Request) {
   const body = await readJson(request)
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
 
-  const businessId = typeof body.business_id === "string" ? body.business_id : ""
+  const businessId = isUuid(body.business_id) ? body.business_id : ""
   if (!businessId) return NextResponse.json({ error: "business_id is required" }, { status: 400 })
 
   const domain = normalizeDomain(body.domain)
@@ -129,6 +142,15 @@ export async function POST(request: Request) {
     .select("domain", { count: "exact", head: true })
     .eq("business_id", businessId)
   const makePrimary = body.is_primary === true || (count ?? 0) === 0
+  const makeActive = body.is_active === false ? false : true
+
+  const audit = await recordOperatorAudit(supabase, {
+    action: "domain_added",
+    actorUserId: guard.admin.userId,
+    businessId,
+    detail: { domain, is_primary: makePrimary, is_active: makeActive },
+  })
+  if (!audit.ok) return auditFailedResponse()
 
   if (makePrimary) await clearPrimary(supabase, businessId)
 
@@ -136,12 +158,14 @@ export async function POST(request: Request) {
     domain,
     business_id: businessId,
     is_primary: makePrimary,
-    is_active: body.is_active === false ? false : true,
-    label: typeof body.label === "string" && body.label.trim() ? body.label.trim() : null,
+    is_active: makeActive,
+    label: typeof body.label === "string" && body.label.trim() ? body.label.trim().slice(0, 80) : null,
   })
   if (error) {
     await ensurePrimary(supabase, businessId)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    // 23505: someone added the same hostname in the meantime.
+    if (error.code === "23505") return NextResponse.json({ error: `"${domain}" is already taken` }, { status: 409 })
+    return dbFailed("domain_add_failed", businessId, error.code, "create_failed")
   }
 
   return NextResponse.json({ domain, is_primary: makePrimary }, { status: 201 })
@@ -158,7 +182,7 @@ export async function PATCH(request: Request) {
   const body = await readJson(request)
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
 
-  const businessId = typeof body.business_id === "string" ? body.business_id : ""
+  const businessId = isUuid(body.business_id) ? body.business_id : ""
   const domain = typeof body.domain === "string" ? body.domain.trim().toLowerCase() : ""
   if (!businessId || !domain) {
     return NextResponse.json({ error: "business_id and domain are required" }, { status: 400 })
@@ -194,12 +218,25 @@ export async function PATCH(request: Request) {
   const nextPrimary = typeof body.is_primary === "boolean" ? body.is_primary : existing.is_primary
   const nextActive = typeof body.is_active === "boolean" ? body.is_active : existing.is_active
   const nextLabel =
-    "label" in body ? (typeof body.label === "string" && body.label.trim() ? body.label.trim() : null) : existing.label
+    "label" in body ? (typeof body.label === "string" && body.label.trim() ? body.label.trim().slice(0, 80) : null) : existing.label
 
   // A deactivated domain resolves to nothing, so it must not stay primary.
   if (nextPrimary && !nextActive) {
     return NextResponse.json({ error: "The primary domain cannot be deactivated" }, { status: 400 })
   }
+
+  const audit = await recordOperatorAudit(supabase, {
+    action: "domain_changed",
+    actorUserId: guard.admin.userId,
+    businessId,
+    detail: {
+      domain: existing.domain,
+      new_domain: targetDomain !== existing.domain ? targetDomain : null,
+      is_primary: nextPrimary,
+      is_active: nextActive,
+    },
+  })
+  if (!audit.ok) return auditFailedResponse()
 
   if (nextPrimary) await clearPrimary(supabase, businessId)
 
@@ -212,14 +249,14 @@ export async function PATCH(request: Request) {
         is_active: nextActive,
         label: nextLabel,
       })
-      if (insErr) throw new Error(insErr.message)
+      if (insErr) throw insErr
 
       const { error: delErr } = await supabase
         .from("business_domains")
         .delete()
         .eq("domain", existing.domain)
         .eq("business_id", businessId)
-      if (delErr) throw new Error(delErr.message)
+      if (delErr) throw delErr
     } else {
       const { error } = await supabase
         .from("business_domains")
@@ -231,11 +268,13 @@ export async function PATCH(request: Request) {
         })
         .eq("domain", existing.domain)
         .eq("business_id", businessId)
-      if (error) throw new Error(error.message)
+      if (error) throw error
     }
   } catch (err) {
     await ensurePrimary(supabase, businessId)
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Update failed" }, { status: 500 })
+    const code = (err as { code?: string } | null)?.code
+    if (code === "23505") return NextResponse.json({ error: `"${targetDomain}" is already taken` }, { status: 409 })
+    return dbFailed("domain_update_failed", businessId, code, "update_failed")
   }
 
   await ensurePrimary(supabase, businessId)
@@ -252,7 +291,7 @@ export async function DELETE(request: Request) {
   if (guard.response) return guard.response
 
   const params = new URL(request.url).searchParams
-  const businessId = params.get("business_id") ?? ""
+  const businessId = isUuid(params.get("business_id")) ? (params.get("business_id") as string) : ""
   const domain = (params.get("domain") ?? "").trim().toLowerCase()
   if (!businessId || !domain) {
     return NextResponse.json({ error: "business_id and domain are required" }, { status: 400 })
@@ -271,12 +310,20 @@ export async function DELETE(request: Request) {
     )
   }
 
+  const audit = await recordOperatorAudit(supabase, {
+    action: "domain_removed",
+    actorUserId: guard.admin.userId,
+    businessId,
+    detail: { domain },
+  })
+  if (!audit.ok) return auditFailedResponse()
+
   const { error } = await supabase
     .from("business_domains")
     .delete()
     .eq("business_id", businessId)
     .eq("domain", domain)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbFailed("domain_remove_failed", businessId, error.code, "delete_failed")
 
   await ensurePrimary(supabase, businessId)
   return NextResponse.json({ deleted: domain })

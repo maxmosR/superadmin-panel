@@ -5,6 +5,15 @@
 // nobody deactivates themselves (409 cannot_deactivate_self: another operator
 // must). Every change is audited first (record_audit, ids only); without the
 // audit row nothing is changed (500 audit_failed).
+//
+// The last-operator check runs twice: before the update (the usual refusal)
+// and again after it, because two operators deactivating each other at the
+// same moment would both pass the first check. If the update left no active
+// operator, it is rolled back (the target is reactivated, audited as such)
+// and the request answers 409 last_operator. Each statement commits on its
+// own, so whichever request re-checks last sees both updates and undoes its
+// own: at least one operator always stays active. (A single SQL function
+// that locks the active rows would make this a single atomic step.)
 import { NextResponse } from "next/server"
 import { recordOperatorAudit } from "@/lib/operator-audit"
 import { requireOperator } from "@/lib/require-operator"
@@ -66,5 +75,41 @@ export async function PATCH(request: Request) {
     if (error) return NextResponse.json({ error: "update_failed" }, { status: 500 })
     return NextResponse.json({ error: "not_found" }, { status: 404 })
   }
+
+  if (!body.is_active) {
+    const { data: after, error: afterError } = await supabase.from("platform_admins").select("user_id").eq("is_active", true)
+    // Unknown is treated like "none left": undo rather than risk zero.
+    if (afterError || (after ?? []).length === 0) {
+      return rollbackDeactivation(supabase, guard.admin.userId, body.user_id, audit.id, afterError?.code ?? null)
+    }
+  }
   return NextResponse.json({ ok: true, operator: data })
+}
+
+async function rollbackDeactivation(
+  supabase: ReturnType<typeof createAdminClient>,
+  actorUserId: string,
+  targetUserId: string,
+  auditId: string,
+  recheckCode: string | null,
+) {
+  // Best effort: the reactivation must happen even if its audit row can't be written.
+  const undoAudit = await recordOperatorAudit(supabase, {
+    action: "operator_activated",
+    actorUserId,
+    subjectUserId: targetUserId,
+    detail: { reason: "last_operator_rollback", reverts_audit: auditId },
+  })
+  const { error } = await supabase.from("platform_admins").update({ is_active: true }).eq("user_id", targetUserId)
+  console.error(
+    JSON.stringify({
+      event: "operator_deactivation_rolled_back",
+      audit: auditId,
+      undo_audit: undoAudit.ok ? undoAudit.id : null,
+      recheck_code: recheckCode,
+      rollback_code: error?.code ?? null,
+    }),
+  )
+  if (error) return NextResponse.json({ error: "update_failed" }, { status: 500 })
+  return NextResponse.json({ error: "last_operator" }, { status: 409 })
 }
