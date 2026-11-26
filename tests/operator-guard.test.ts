@@ -311,11 +311,15 @@ adminHandlers.push(
 const allHandlers: Array<[string, () => Promise<Response>]> = [
   ...adminHandlers,
   ["GET /api/me", () => me.GET()],
-  // Forwards to the operator-create-payout-account Edge Function with the
-  // operator's own JWT; the service-role client only writes the audit row.
+  // Forwards to the operator-create-payout-account Edge Function (links an
+  // existing acct_ id) with the operator's own JWT; the service-role client
+  // only writes the audit row.
   [
     "POST /api/businesses/payout-account",
-    () => payoutAccount.POST(jsonRequest("POST", "http://localhost/api/businesses/payout-account", { business_id: BIZ })),
+    () =>
+      payoutAccount.POST(
+        jsonRequest("POST", "http://localhost/api/businesses/payout-account", { business_id: BIZ, stripe_account_id: "acct_1TestRestaurant" }),
+      ),
   ],
   // Forwards to the operator-sms-alias Edge Function with the operator's own JWT.
   [

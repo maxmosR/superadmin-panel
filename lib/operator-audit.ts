@@ -39,6 +39,7 @@ export const OPERATOR_AUDIT_ACTIONS = [
   "order_device_paired",
   "order_device_changed",
   "payout_account_created",
+  "payout_account_linked",
 ] as const
 export type OperatorAuditAction = (typeof OPERATOR_AUDIT_ACTIONS)[number]
 

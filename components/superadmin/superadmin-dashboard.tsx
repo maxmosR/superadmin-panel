@@ -258,7 +258,7 @@ export function SuperAdminDashboard({
                         <DomainList domains={b.domains} rootDomain={rootDomain} />
                       </TableCell>
                       <TableCell className="py-3">
-                        <PayoutAccountCell businessId={b.business_id} businessName={b.business_name} account={b.payout_account ?? null} onCreated={load} />
+                        <PayoutAccountCell businessId={b.business_id} businessName={b.business_name} account={b.payout_account ?? null} onChanged={load} />
                       </TableCell>
                       <TableCell className="py-3 pr-6 text-right">
                         <RowActions row={b} ready={readiness.ready} className="justify-end" />
@@ -282,7 +282,7 @@ export function SuperAdminDashboard({
                     </dd>
                     <dt className="text-muted-foreground">{t.dashboard.payoutShort}</dt>
                     <dd className="min-w-0">
-                      <PayoutAccountCell businessId={b.business_id} businessName={b.business_name} account={b.payout_account ?? null} onCreated={load} />
+                      <PayoutAccountCell businessId={b.business_id} businessName={b.business_name} account={b.payout_account ?? null} onChanged={load} />
                     </dd>
                   </dl>
                   <RowActions row={b} ready={readiness.ready} className="-ml-3" />

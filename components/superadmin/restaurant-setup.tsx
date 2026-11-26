@@ -492,7 +492,7 @@ export function RestaurantSetup({ businessId, adminEmail, rootDomain }: { busine
               businessId={row.business_id}
               businessName={row.business_name}
               account={row.payout_account ?? null}
-              onCreated={() => void load()}
+              onChanged={() => void load()}
             />
           </Panel>
 
