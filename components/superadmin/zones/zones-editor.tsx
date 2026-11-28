@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { createAutosave, type Autosave, type AutosaveStatus } from "@/lib/zones/autosave"
 import {
   buildPayload,
+  editorCuts,
   EMPTY_STATE,
   exportJson,
   parseImportJson,
@@ -25,6 +26,7 @@ import {
 import { distanceM } from "@/lib/zones/geo"
 import { parseKm } from "@/lib/zones/units"
 import type {
+  CutKind,
   DraftPayload,
   ExtendedLine,
   IssueRef,
@@ -264,13 +266,15 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
   )
 
   const onLinesChange = useCallback(
-    (lines: Array<{ id: string; points: LatLng[] }>) =>
+    (lines: Array<{ id: string; kind: CutKind; points: LatLng[] }>) =>
       edit((s) => {
         const labels = new Map(s.cut_lines.map((c) => [c.id, c.label]))
-        const next = lines.map((l) => ({ id: l.id, points: l.points, label: labels.get(l.id) ?? null }))
+        const next = lines.map((l) => ({ id: l.id, kind: l.kind, points: l.points, label: labels.get(l.id) ?? null }))
         const same =
           next.length === s.cut_lines.length &&
-          next.every((l, i) => l.id === s.cut_lines[i].id && JSON.stringify(l.points) === JSON.stringify(s.cut_lines[i].points))
+          next.every(
+            (l, i) => l.id === s.cut_lines[i].id && l.kind === s.cut_lines[i].kind && JSON.stringify(l.points) === JSON.stringify(s.cut_lines[i].points),
+          )
         return same ? s : { ...s, cut_lines: next }
       }),
     [edit],
@@ -515,9 +519,13 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
               {step === "pieces" && (
                 <PiecesStep
                   pieces={computed.pieces}
+                  rules={state.rules}
+                  issues={computed.issues}
+                  readOnly={readOnly}
                   hover={hoverPiece}
                   onHover={setHighlightPiece}
                   onShow={showOnMap}
+                  edit={edit}
                 />
               )}
               {step === "test" && (
@@ -579,8 +587,8 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
     return {
       origin: viewing ? viewing.origin : state.origin,
       rings: viewing ? viewing.rings.map((r) => ({ key: r.id, radiusM: r.radius_m })) : ringsForMap,
-      cutLines: viewing ? viewing.cut_lines : state.cut_lines,
-      extendedLines: viewing ? viewing.extended_lines : computed.extended_lines,
+      // Old straight cuts show as drawn, without their extension.
+      cutLines: viewing ? editorCuts(viewing.cut_lines) : state.cut_lines,
       pieces: mapPieces,
       livePieces: step === "publish" ? (published?.pieces ?? null) : null,
       layers,
@@ -596,7 +604,10 @@ export function ZonesEditor({ businessId }: { businessId: string }) {
       onOriginChange: (p: LatLng) => void moveOrigin(p),
       onRingRadiusChange,
       onLinesChange,
-      onDrawFinished: () => setDrawing(false),
+      // Stay in drawing mode so several shapes can be drawn in a row; stop at the limit.
+      onDrawFinished: () => {
+        if (state.cut_lines.length + 1 >= ZONE_LIMITS.maxLines) setDrawing(false)
+      },
       onSelectLine: setSelectedLineId,
       onPieceClick: (pieceId: string, at: LatLng, pixel: { x: number; y: number }) => setPopover({ pieceId, at, pixel }),
       onPieceHover: setHoverPiece,

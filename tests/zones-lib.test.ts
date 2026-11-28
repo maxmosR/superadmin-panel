@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { parseEuro, parseKm, snapRadius } from "@/lib/zones/units"
 import { createAutosave, type AutosaveStatus, type SaveOutcome } from "@/lib/zones/autosave"
-import { buildPayload, exportJson, parseImportJson, ringErrors, sortRings, zonesEqual, type EditorState } from "@/lib/zones/editor-state"
+import { buildPayload, editorCuts, exportJson, parseImportJson, ringErrors, sortRings, stateFromPayload, zonesEqual, type EditorState } from "@/lib/zones/editor-state"
 import { zoneBadges } from "@/lib/zones/badge"
 import { destination, distanceM, parseLatLngText } from "@/lib/zones/geo"
 import type { DraftPayload } from "@/lib/zones/types"
@@ -149,7 +149,10 @@ describe("autosave queue", () => {
 const VALID: DraftPayload = {
   origin: { lat: 44.4056, lng: 8.9463 },
   rings: [{ radius_m: 1500, fee: 2, min_order: 15, label: null }],
-  cut_lines: [{ id: null, label: "river", points: [{ lat: 44.4, lng: 8.95 }, { lat: 44.41, lng: 8.95 }] }],
+  cut_lines: [
+    { id: null, label: "river", kind: "line", points: [{ lat: 44.4, lng: 8.95 }, { lat: 44.41, lng: 8.95 }] },
+    { id: null, label: "park", kind: "polygon", points: [{ lat: 44.4, lng: 8.95 }, { lat: 44.41, lng: 8.95 }, { lat: 44.41, lng: 8.96 }] },
+  ],
   rules: [{ id: null, anchor: { lat: 44.405, lng: 8.96 }, mode: "excluded", fee: null, label: null }],
 }
 
@@ -172,6 +175,19 @@ describe("import JSON", () => {
       })
     }
   })
+  it("reads cut lines without a kind as lines, checks shapes", () => {
+    const pts = [{ lat: 44.4, lng: 8.95 }, { lat: 44.41, lng: 8.95 }]
+    const old = parseImportJson(JSON.stringify({ origin: VALID.origin, rings: VALID.rings, cut_lines: [{ id: null, label: null, points: pts }] }))
+    expect(old.ok && old.payload.cut_lines[0].kind).toBe("line")
+    expect(parseImportJson(JSON.stringify({ origin: VALID.origin, rings: VALID.rings, cut_lines: [{ id: null, label: null, kind: "polygon", points: pts }] }))).toEqual({
+      ok: false,
+      error: "Invalid field: cut_lines[0].points",
+    })
+    expect(parseImportJson(JSON.stringify({ origin: VALID.origin, rings: VALID.rings, cut_lines: [{ id: null, label: null, kind: "circle", points: pts }] }))).toEqual({
+      ok: false,
+      error: "Invalid field: cut_lines[0].kind",
+    })
+  })
   it("refuses broken files with a reason", () => {
     expect(parseImportJson("{")).toEqual({ ok: false, error: "The file is not valid JSON." })
     expect(parseImportJson("[]")).toEqual({ ok: false, error: "Expected a JSON object." })
@@ -184,6 +200,24 @@ describe("import JSON", () => {
       ok: false,
       error: "Invalid field: rings",
     })
+  })
+})
+
+describe("old straight cuts", () => {
+  it("become drawn lines (no extension), shapes kept", () => {
+    const pts = [{ lat: 44.4, lng: 8.95 }, { lat: 44.41, lng: 8.95 }, { lat: 44.41, lng: 8.96 }]
+    const cuts = editorCuts([
+      { id: "a", label: null, points: pts.slice(0, 2) },
+      { id: "b", label: null, kind: "line", points: pts.slice(0, 2) },
+      { id: "c", label: "park", kind: "polygon", points: pts },
+      { id: null, label: null, kind: "path", points: pts.slice(0, 2) },
+    ])
+    expect(cuts.map((c) => c.kind)).toEqual(["path", "path", "polygon", "path"])
+    expect(cuts[2]).toEqual({ id: "c", label: "park", kind: "polygon", points: pts })
+    expect(cuts[0]).toEqual({ id: "a", label: null, kind: "path", points: pts.slice(0, 2) })
+    expect(cuts[3].id).toMatch(/^[0-9a-f-]{36}$/)
+    // An imported file with an old cut keeps it as a drawn line.
+    expect(stateFromPayload(VALID).cut_lines.map((c) => c.kind)).toEqual(["path", "polygon"])
   })
 })
 
@@ -284,5 +318,10 @@ describe("zonesEqual", () => {
     expect(zonesEqual(base, { ...base, origin: { lat: 44.4056, lng: 8.965752 } })).toBe(false)
     expect(zonesEqual(base, { ...base, cut_lines: [...base.cut_lines, { id: null, label: null, points: base.cut_lines[0].points }] })).toBe(false)
     expect(zonesEqual(base, { ...base, rules: [{ ...base.rules[0], mode: "custom_fee", fee: 4 }] })).toBe(false)
+  })
+
+  it("reads a missing kind as a line and sees a line turned into a shape", () => {
+    expect(zonesEqual(base, { ...base, cut_lines: base.cut_lines.map((c) => ({ ...c, kind: "line" as const })) })).toBe(true)
+    expect(zonesEqual(base, { ...base, cut_lines: base.cut_lines.map((c) => ({ ...c, kind: "polygon" as const })) })).toBe(false)
   })
 })

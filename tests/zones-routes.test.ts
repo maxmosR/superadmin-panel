@@ -44,7 +44,7 @@ const json = (body: unknown, method = "POST") =>
 const PAYLOAD = {
   origin: { lat: 44.4056, lng: 8.9463 },
   rings: [{ radius_m: 1500, fee: 2, min_order: 0, label: null }, { radius_m: 2500, fee: 4, min_order: 20, label: "outer" }],
-  cut_lines: [{ id: null, label: "river", points: [{ lat: 44.4, lng: 8.95 }, { lat: 44.41, lng: 8.95 }] }],
+  cut_lines: [{ id: null, label: "park", kind: "polygon", points: [{ lat: 44.4, lng: 8.95 }, { lat: 44.41, lng: 8.95 }, { lat: 44.41, lng: 8.96 }] }],
   rules: [{ id: null, anchor: { lat: 44.405, lng: 8.96 }, mode: "custom_fee", fee: 5, label: null }],
 }
 const sqlError = (message: string, details: string | null = null, code = "P0001") => ({ data: null, error: { message, details, code } })

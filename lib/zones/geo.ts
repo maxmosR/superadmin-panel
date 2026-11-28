@@ -38,3 +38,21 @@ export function parseLatLngText(text: string): LatLng | null {
 export function formatLatLng(p: LatLng): string {
   return `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`
 }
+
+/**
+ * True when `p` is inside a GeoJSON polygon ([lng, lat] rings, holes after
+ * the first). For display only (which piece a pin sits in); the database
+ * decides which piece a setting applies to.
+ */
+export function inPolygon(p: LatLng, rings: number[][][]): boolean {
+  const inRing = (ring: number[][]) => {
+    let inside = false
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i]
+      const [xj, yj] = ring[j]
+      if (yi > p.lat !== yj > p.lat && p.lng < ((xj - xi) * (p.lat - yi)) / (yj - yi) + xi) inside = !inside
+    }
+    return inside
+  }
+  return rings.length > 0 && inRing(rings[0]) && !rings.slice(1).some(inRing)
+}

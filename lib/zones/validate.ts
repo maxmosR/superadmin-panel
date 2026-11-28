@@ -1,7 +1,7 @@
 // Hand-written input checks for the zone routes (no validation library, like
 // lib/admin-nav.ts). They mirror delivery_zone_validate_payload() in the
 // database, so a bad body gets 400 before any RPC; the database still checks.
-import { ZONE_LIMITS, type CutLineInput, type DraftPayload, type LatLng, type RingInput, type RuleInput, type RuleMode } from "./types"
+import { ZONE_LIMITS, type CutKind, type CutLineInput, type DraftPayload, type LatLng, type RingInput, type RuleInput, type RuleMode } from "./types"
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -86,19 +86,22 @@ export function parseDraftPayload(body: unknown): PayloadCheck {
   const cut_lines: CutLineInput[] = []
   for (const [i, c] of rawLines.entries()) {
     if (!c || typeof c !== "object") return bad(`cut_lines[${i}]`)
-    const { id, label, points } = c as Record<string, unknown>
+    const { id, label, kind, points } = c as Record<string, unknown>
     const pid = parseId(id)
     if (pid === undefined) return bad(`cut_lines[${i}].id`)
     const l = parseLabel(label)
     if (l === undefined) return bad(`cut_lines[${i}].label`)
-    if (!Array.isArray(points) || points.length < 2 || points.length > ZONE_LIMITS.maxPoints) return bad(`cut_lines[${i}].points`)
+    if (kind !== undefined && kind !== null && kind !== "line" && kind !== "polygon" && kind !== "path") return bad(`cut_lines[${i}].kind`)
+    const k: CutKind = kind === "polygon" || kind === "path" ? kind : "line"
+    const minPoints = k === "polygon" ? 3 : 2
+    if (!Array.isArray(points) || points.length < minPoints || points.length > ZONE_LIMITS.maxPoints) return bad(`cut_lines[${i}].points`)
     const pts: LatLng[] = []
     for (const [j, p] of points.entries()) {
       const ll = parseLatLng(p)
       if (!ll) return bad(`cut_lines[${i}].points[${j}]`)
       pts.push(ll)
     }
-    cut_lines.push({ id: pid, label: l, points: pts })
+    cut_lines.push({ id: pid, label: l, kind: k, points: pts })
   }
 
   const rawRules = b.rules ?? []

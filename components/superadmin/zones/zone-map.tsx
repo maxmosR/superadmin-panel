@@ -1,11 +1,13 @@
 "use client"
 
-// The zone editor's map. It only DISPLAYS server results (pieces, extended
-// cut lines) plus drawing previews (ring circles, the lines being drawn). It
+// The zone editor's map. It only DISPLAYS server results (pieces) plus
+// drawing previews (ring circles, the lines being drawn). It
 // never computes zones, fees or quotes.
 //
-// - Terra Draw (Google Maps adapter) draws and edits the center point and the
-//   cut lines.
+// - Terra Draw (Google Maps adapter) draws and edits the center point and
+//   edits the cuts (drag a point to reshape).
+// - Cuts are DRAWN here, segment by segment (rules in lib/zones/draw.ts):
+//   close a shape on its first point, or end a line on a ring circle.
 // - Ring circles are google.maps.Circle with a draggable edge handle each.
 // - Pieces come from the server as GeoJSON on a Data layer.
 
@@ -14,17 +16,20 @@ import {
   TerraDraw,
   TerraDrawLineStringMode,
   TerraDrawPointMode,
+  TerraDrawPolygonMode,
   TerraDrawSelectMode,
+  ValidateNotSelfIntersecting,
   type GeoJSONStoreFeatures,
 } from "terra-draw"
 import { TerraDrawGoogleMapsAdapter } from "terra-draw-google-maps-adapter"
 import { MapProblem } from "./map-boundary"
 import { loadGoogleMaps, mapId, onMapsAuthFailure, MAPS_DOMAIN_ERROR, MAPS_KEY_MISSING, MAPS_LOAD_FAILED } from "@/lib/google-maps/loader"
 import { useI18n } from "@/lib/i18n/client"
+import { drawClick, drawPreview, metersPerPixel, snapPathEnds, SNAP_PX, type DrawContext } from "@/lib/zones/draw"
 import { destination, distanceM } from "@/lib/zones/geo"
 import { formatEuro, snapRadius } from "@/lib/zones/units"
 import type { EditorCutLine, EditorRule } from "@/lib/zones/editor-state"
-import type { ExtendedLine, IssueRef, LatLng, PieceCollection, PieceFeature } from "@/lib/zones/types"
+import { ZONE_LIMITS, type CutKind, type IssueRef, type LatLng, type PieceCollection, type PieceFeature } from "@/lib/zones/types"
 
 export type EditorStep = "center" | "rings" | "cut" | "pieces" | "test" | "publish" | "history"
 export type MapLayers = "draft" | "live" | "both"
@@ -39,7 +44,6 @@ export interface ZoneMapProps {
   origin: LatLng | null
   rings: Array<{ key: string; radiusM: number }>
   cutLines: EditorCutLine[]
-  extendedLines: ExtendedLine[]
   pieces: PieceCollection | null
   livePieces: PieceCollection | null
   layers: MapLayers
@@ -55,7 +59,7 @@ export interface ZoneMapProps {
   resyncNonce: number
   onOriginChange: (p: LatLng) => void
   onRingRadiusChange: (key: string, radiusM: number) => void
-  onLinesChange: (lines: Array<{ id: string; points: LatLng[] }>) => void
+  onLinesChange: (lines: Array<{ id: string; kind: CutKind; points: LatLng[] }>) => void
   onDrawFinished: () => void
   onSelectLine: (id: string | null) => void
   onPieceClick: (pieceId: string, at: LatLng, pixel: { x: number; y: number }) => void
@@ -68,6 +72,41 @@ const near = (a: number, b: number) => Math.abs(a - b) < 1e-8
 
 function samePoints(a: LatLng[], b: LatLng[]) {
   return a.length === b.length && a.every((p, i) => near(p.lat, b[i].lat) && near(p.lng, b[i].lng))
+}
+
+const SHAPE_COLOR = "#111827"
+
+/** The cut a Terra Draw feature stands for (shape points open), or null for other features. */
+function cutOf(f: GeoJSONStoreFeatures): { kind: CutKind; points: LatLng[] } | null {
+  if (f.geometry.type === "Polygon" && f.properties.mode === "polygon") {
+    const ring = (f.geometry.coordinates as number[][][])[0] ?? []
+    return { kind: "polygon", points: ring.slice(0, -1).map(([lng, lat]) => ({ lat, lng })) }
+  }
+  if (f.geometry.type === "LineString" && f.properties.mode === "linestring") {
+    return {
+      kind: f.properties.cutKind === "path" ? "path" : "line",
+      points: (f.geometry.coordinates as number[][]).map(([lng, lat]) => ({ lat, lng })),
+    }
+  }
+  return null
+}
+
+/** Terra Draw refuses coordinates finer than its coordinatePrecision (9). */
+const round9 = (x: number) => Math.round(x * 1e9) / 1e9
+
+/** A cut as a Terra Draw feature (a shape's ring closed). */
+function cutFeature(c: EditorCutLine): GeoJSONStoreFeatures {
+  const coords = c.points.map((p) => [round9(p.lng), round9(p.lat)])
+  return c.kind === "polygon"
+    ? { id: c.id, type: "Feature", geometry: { type: "Polygon", coordinates: [[...coords, coords[0]]] }, properties: { mode: "polygon" } }
+    : { id: c.id, type: "Feature", geometry: { type: "LineString", coordinates: coords }, properties: { mode: "linestring", cutKind: c.kind } }
+}
+
+/** A drawing dot (its clicks are forwarded to the cut tool, see below). */
+function drawDot(color: string, size: number) {
+  const el = dotEl(color, size)
+  el.style.cursor = "crosshair"
+  return el
 }
 
 function labelEl(text: string, tone: "fee" | "none") {
@@ -123,10 +162,10 @@ export function ZoneMap(props: ZoneMapProps) {
   const draftDataRef = useRef<google.maps.Data | null>(null)
   const liveDataRef = useRef<google.maps.Data | null>(null)
   const viewOverlays = useRef<Array<google.maps.Polyline | google.maps.marker.AdvancedMarkerElement>>([])
-  const extOverlays = useRef<google.maps.Polyline[]>([])
   const ringObjs = useRef(new Map<string, { circle: google.maps.Circle; handle: google.maps.marker.AdvancedMarkerElement; dragging: boolean }>())
   const ruleMarkers = useRef(new Map<string, google.maps.marker.AdvancedMarkerElement>())
   const testMarker = useRef<google.maps.marker.AdvancedMarkerElement | null>(null)
+  const cutTool = useRef<{ reset: () => void } | null>(null)
   const centeredOnce = useRef(false)
   const [ready, setReady] = useState(false)
   const [drawReady, setDrawReady] = useState(false)
@@ -153,6 +192,7 @@ export function ZoneMap(props: ZoneMapProps) {
   // ---- init ----------------------------------------------------------------
   useEffect(() => {
     let cancelled = false
+    let removeKeyListener = () => {}
     const off = onMapsAuthFailure(() => setError(mapsError(MAPS_DOMAIN_ERROR)))
     loadGoogleMaps()
       .then(async (g) => {
@@ -210,7 +250,22 @@ export function ZoneMap(props: ZoneMapProps) {
           adapter: new TerraDrawGoogleMapsAdapter({ lib: google.maps, map, coordinatePrecision: 9, isolatedData: true }),
           modes: [
             new TerraDrawPointMode({ styles: { pointColor: "#dc2626", pointWidth: 8, pointOutlineColor: "#ffffff", pointOutlineWidth: 2 } }),
-            new TerraDrawLineStringMode({ styles: { lineStringColor: "#111827", lineStringWidth: 3 } }),
+            new TerraDrawLineStringMode({ styles: { lineStringColor: SHAPE_COLOR, lineStringWidth: 3 } }),
+            // Registered so shape features can be stored and edited; drawing
+            // itself is done by the segment tool below.
+            new TerraDrawPolygonMode({
+              styles: {
+                fillColor: SHAPE_COLOR,
+                fillOpacity: 0.08,
+                outlineColor: SHAPE_COLOR,
+                outlineWidth: 3,
+                closingPointColor: "#ffffff",
+                closingPointOutlineColor: SHAPE_COLOR,
+                closingPointWidth: 6,
+                closingPointOutlineWidth: 2,
+              },
+              validation: (feature) => (feature.geometry.type === "Polygon" ? ValidateNotSelfIntersecting(feature) : { valid: true }),
+            }),
             new TerraDrawSelectMode({
               modeName: "select-center",
               flags: { point: { feature: { draggable: true } } },
@@ -220,20 +275,46 @@ export function ZoneMap(props: ZoneMapProps) {
               modeName: "select-lines",
               flags: {
                 linestring: { feature: { draggable: false, coordinates: { draggable: true, midpoints: true, deletable: true } } },
+                // Drag a corner to reshape; drag a midpoint to add one; right-click a corner to remove it.
+                polygon: { feature: { draggable: false, coordinates: { draggable: true, midpoints: true, deletable: true } } },
               },
-              styles: { selectedLineStringColor: "#2563eb", selectedLineStringWidth: 4 },
+              styles: {
+                selectedLineStringColor: "#2563eb",
+                selectedLineStringWidth: 4,
+                selectedPolygonColor: "#2563eb",
+                selectedPolygonFillOpacity: 0.15,
+                selectedPolygonOutlineColor: "#2563eb",
+                selectedPolygonOutlineWidth: 4,
+              },
             }),
           ],
         })
 
+        const drawContext = (points: LatLng[]): DrawContext => {
+          const p = live.current
+          const lat = map.getCenter()?.lat() ?? p.origin?.lat ?? 0
+          return { points, origin: p.origin, radiiM: p.rings.map((r) => r.radiusM), tolM: SNAP_PX * metersPerPixel(lat, map.getZoom() ?? 13) }
+        }
+
         const emit = () => {
           const snap = draw.getSnapshot()
-          const lines = snap
-            .filter((f) => f.geometry.type === "LineString" && f.properties.mode === "linestring")
-            .map((f) => ({
-              id: String(f.id),
-              points: (f.geometry.coordinates as number[][]).map(([lng, lat]) => ({ lat, lng })),
-            }))
+          const lines = snap.flatMap((f) => {
+            const c = cutOf(f)
+            if (!c) return []
+            if (c.kind === "path") {
+              // An end dragged near a ring circle goes back onto it.
+              const points = snapPathEnds(c.points, live.current.origin, live.current.rings.map((r) => r.radiusM), drawContext([]).tolM)
+              if (!samePoints(points, c.points)) {
+                try {
+                  draw.updateFeatureGeometry(f.id as string, { type: "LineString", coordinates: points.map((q) => [q.lng, q.lat]) })
+                } catch {
+                  // Keep the drawn geometry; the server reports a loose end.
+                }
+                return [{ id: String(f.id), kind: c.kind, points }]
+              }
+            }
+            return [{ id: String(f.id), ...c }]
+          })
           live.current.onLinesChange(lines)
           const o = snap.find((f) => f.id === ORIGIN_ID)
           if (o && o.geometry.type === "Point") {
@@ -256,7 +337,6 @@ export function ZoneMap(props: ZoneMapProps) {
             return
           }
           emit()
-          if (ctx.mode === "linestring" && ctx.action === "draw") live.current.onDrawFinished()
         })
         draw.on("change", (_ids, type, context) => {
           if (type === "delete" && !(context && "origin" in context && context.origin === "api")) emit()
@@ -267,12 +347,102 @@ export function ZoneMap(props: ZoneMapProps) {
         draw.on("deselect", () => live.current.onSelectLine(null))
         draw.start()
         drawRef.current = draw
+
+        // ---- the segment-by-segment cut tool ----
+        const dashed = { icon: { path: "M 0,-1 0,1", strokeOpacity: 0.9, strokeColor: SHAPE_COLOR, scale: 2 }, offset: "0", repeat: "10px" }
+        const drawnLine = new google.maps.Polyline({ map, clickable: false, strokeColor: SHAPE_COLOR, strokeWeight: 3, zIndex: 6 })
+        const rubber = new google.maps.Polyline({ map, clickable: false, strokeOpacity: 0, zIndex: 6, icons: [dashed] })
+        // Markers take the clicks on them (the map never sees those), so a
+        // click on a dot counts as a click at the dot: the first dot closes,
+        // the last dot ends the line, the blue snap dot snaps.
+        const hint = new google.maps.marker.AdvancedMarkerElement({ content: drawDot("#2563eb", 14), zIndex: 7, gmpClickable: true })
+        let pts: LatLng[] = []
+        let dots: google.maps.marker.AdvancedMarkerElement[] = []
+        const active = () => live.current.step === "cut" && live.current.drawing && !live.current.readOnly
+        const render = () => {
+          drawnLine.setPath(pts)
+          for (const d of dots) d.map = null
+          dots = pts.map((p, i) => {
+            const m = new google.maps.marker.AdvancedMarkerElement({
+              map,
+              position: p,
+              content: drawDot(i === 0 ? "#ffffff" : SHAPE_COLOR, i === 0 ? 14 : 9),
+              zIndex: 7,
+              gmpClickable: true,
+            })
+            m.addEventListener("gmp-click", () => onDrawClick(p))
+            return m
+          })
+        }
+        const reset = () => {
+          pts = []
+          render()
+          rubber.setPath([])
+          hint.map = null
+        }
+        cutTool.current = { reset }
+        const finish = (kind: "polygon" | "path", points: LatLng[]) => {
+          if (live.current.cutLines.length >= ZONE_LIMITS.maxLines) return reset()
+          const id = globalThis.crypto.randomUUID()
+          const res = draw.addFeatures([cutFeature({ id, kind, points, label: null })])
+          // A shape whose sides cross is refused: keep drawing so it can be fixed.
+          const refused = res.find((r) => !r.valid)
+          if (refused) {
+            console.warn("zones: cut refused by the map", refused.reason)
+            return
+          }
+          reset()
+          emit()
+          live.current.onDrawFinished()
+        }
+        const onDrawClick = (at: LatLng) => {
+          if (!active()) return
+          const step = drawClick(at, drawContext(pts))
+          if (step.action === "finish") return finish(step.kind, step.points)
+          if (step.action === "add") {
+            pts = [...pts, step.point]
+            render()
+          }
+        }
+        hint.addEventListener("gmp-click", () => {
+          const pos = hint.position as google.maps.LatLngLiteral | google.maps.LatLng | null
+          if (!pos) return
+          onDrawClick(typeof (pos as google.maps.LatLng).lat === "function"
+            ? { lat: (pos as google.maps.LatLng).lat(), lng: (pos as google.maps.LatLng).lng() }
+            : (pos as LatLng))
+        })
+        map.addListener("click", (e: google.maps.MapMouseEvent) => {
+          if (e.latLng) onDrawClick({ lat: e.latLng.lat(), lng: e.latLng.lng() })
+        })
+        map.addListener("mousemove", (e: google.maps.MapMouseEvent) => {
+          if (!e.latLng || !active()) return
+          const pv = drawPreview({ lat: e.latLng.lat(), lng: e.latLng.lng() }, drawContext(pts))
+          rubber.setPath(pts.length ? [pts[pts.length - 1], pv.point] : [])
+          const snapped = pv.closes || distanceM(pv.point, { lat: e.latLng.lat(), lng: e.latLng.lng() }) > 0.01
+          hint.position = pv.point
+          hint.map = snapped ? map : null
+        })
+        const onKey = (e: KeyboardEvent) => {
+          if (!active() || !pts.length) return
+          const tag = (e.target as HTMLElement | null)?.tagName
+          if (tag === "INPUT" || tag === "TEXTAREA") return
+          if (e.key === "Escape") reset()
+          else if (e.key === "Backspace") {
+            e.preventDefault()
+            pts = pts.slice(0, -1)
+            render()
+            rubber.setPath([])
+          }
+        }
+        window.addEventListener("keydown", onKey)
+        removeKeyListener = () => window.removeEventListener("keydown", onKey)
         setReady(true)
       })
       .catch((e: Error) => !cancelled && setError(mapsError(e.message)))
     return () => {
       cancelled = true
       off()
+      removeKeyListener()
       try {
         drawRef.current?.stop()
       } catch {
@@ -298,9 +468,14 @@ export function ZoneMap(props: ZoneMapProps) {
     let mode = "static"
     if (!props.readOnly) {
       if (props.step === "center") mode = props.origin ? "select-center" : "point"
-      else if (props.step === "cut") mode = props.drawing ? "linestring" : "select-lines"
+      // While drawing, Terra Draw stays out of the way: the cut tool takes the clicks.
+      else if (props.step === "cut") mode = props.drawing ? "static" : "select-lines"
     }
     if (draw.getMode() !== mode) draw.setMode(mode)
+    const cutting = !props.readOnly && props.step === "cut" && props.drawing
+    // A double-click ends a line: don't let it zoom the map too.
+    mapRef.current?.setOptions({ disableDoubleClickZoom: cutting, draggableCursor: cutting ? "crosshair" : null })
+    if (!cutting) cutTool.current?.reset()
   }, [drawReady, props.step, props.drawing, props.readOnly, props.origin])
 
   // ---- Terra Draw: features follow the props ---------------------------------
@@ -321,25 +496,38 @@ export function ZoneMap(props: ZoneMapProps) {
       }
     } else if (o) remove.push(ORIGIN_ID)
 
-    const wanted = new Set(props.cutLines.map((c) => c.id))
+    // Terra Draw holds the cuts only in the Cut step (to edit them). Elsewhere
+    // a closed shape's fill would sit above the pieces and take their clicks;
+    // the cuts are drawn as plain outlines instead (below).
+    const editable = props.step === "cut" ? props.cutLines : []
+    const wanted = new Set(editable.map((c) => c.id))
     for (const f of snap) {
-      if (f.properties.mode === "linestring" && !wanted.has(String(f.id))) remove.push(String(f.id))
+      if (cutOf(f) && !wanted.has(String(f.id))) remove.push(String(f.id))
     }
-    for (const c of props.cutLines) {
+    for (const c of editable) {
       const f = byId.get(c.id)
-      const pts = f && f.geometry.type === "LineString" ? (f.geometry.coordinates as number[][]).map(([lng, lat]) => ({ lat, lng })) : null
-      if (pts && samePoints(pts, c.points)) continue
+      const cur = f ? cutOf(f) : null
+      if (cur && cur.kind === c.kind && samePoints(cur.points, c.points)) continue
       if (f) remove.push(c.id)
-      add.push({
-        id: c.id,
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: c.points.map((p) => [p.lng, p.lat]) },
-        properties: { mode: "linestring" },
-      })
+      add.push(cutFeature(c))
     }
     if (remove.length) draw.removeFeatures(remove)
     if (add.length) draw.addFeatures(add)
-  }, [drawReady, props.origin, props.cutLines, props.resyncNonce])
+  }, [drawReady, props.origin, props.cutLines, props.step, props.resyncNonce])
+
+  // ---- cuts outside the Cut step: outlines that let clicks through ----------------
+  const cutOutlines = useRef<google.maps.Polyline[]>([])
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    for (const l of cutOutlines.current) l.setMap(null)
+    cutOutlines.current = []
+    if (props.step === "cut" || props.layers === "live") return
+    for (const c of props.cutLines) {
+      const path = c.kind === "polygon" ? [...c.points, c.points[0]] : c.points
+      cutOutlines.current.push(new google.maps.Polyline({ map, path, clickable: false, strokeColor: SHAPE_COLOR, strokeWeight: 3, zIndex: 3 }))
+    }
+  }, [ready, props.cutLines, props.step, props.layers])
 
   // ---- Terra Draw: selected line from the side list ---------------------------
   useEffect(() => {
@@ -469,32 +657,6 @@ export function ZoneMap(props: ZoneMapProps) {
     data.forEach((f) => data.remove(f))
     if (props.livePieces && props.layers !== "draft") data.addGeoJson(props.livePieces, { idPropertyName: "id" })
   }, [ready, props.livePieces, props.layers])
-
-  // ---- auto-extended part of the cut lines (server geometry, dashed) ----------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!ready || !map) return
-    for (const l of extOverlays.current) l.setMap(null)
-    extOverlays.current = []
-    if (props.layers === "live") return
-    for (const e of props.extendedLines) {
-      const g = e.geometry as { type: string; coordinates: unknown }
-      const parts: number[][][] =
-        g.type === "LineString" ? [g.coordinates as number[][]] : g.type === "MultiLineString" ? (g.coordinates as number[][][]) : []
-      for (const part of parts) {
-        extOverlays.current.push(
-          new google.maps.Polyline({
-            map,
-            path: part.map(([lng, lat]) => ({ lat, lng })),
-            strokeOpacity: 0,
-            clickable: false,
-            zIndex: 1,
-            icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 0.8, strokeColor: "#111827", scale: 2 }, offset: "0", repeat: "12px" }],
-          }),
-        )
-      }
-    }
-  }, [ready, props.extendedLines, props.layers])
 
   // ---- rule anchors (draggable in the Pieces step) ----------------------------
   useEffect(() => {

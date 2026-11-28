@@ -2,7 +2,7 @@
 // conversion to the save payload. Pure functions: unit-tested in node.
 import { feeInput, formatKm, minOrderInput, parseEuro, parseKm, parseMinOrder } from "./units"
 import { parseDraftPayload } from "./validate"
-import type { CutLineInput, DraftPayload, LatLng, RuleInput, ZoneSetView } from "./types"
+import type { CutKind, CutLineInput, DraftPayload, LatLng, RuleInput, ZoneSetView } from "./types"
 
 /** One row of the rings table, as typed (km and € are strings). */
 export interface RingRow {
@@ -16,6 +16,7 @@ export interface RingRow {
 
 export interface EditorCutLine extends CutLineInput {
   id: string
+  kind: CutKind
 }
 
 export interface EditorRule extends RuleInput {
@@ -31,6 +32,21 @@ export interface EditorState {
 
 export const EMPTY_STATE: EditorState = { origin: null, rings: [], cut_lines: [], rules: [] }
 
+/**
+ * The cuts as the editor keeps them. An old straight cut ("line", extended
+ * past the outer ring) becomes a drawn line ("path"): its drawn segments
+ * still cut, the automatic extension is gone. The next save stores it so.
+ * Published versions keep theirs until the draft is published.
+ */
+export function editorCuts(cuts: CutLineInput[]): EditorCutLine[] {
+  return cuts.map((c) => ({
+    id: c.id ?? newId(),
+    label: c.label,
+    kind: c.kind === "polygon" ? "polygon" : "path",
+    points: c.points,
+  }))
+}
+
 export function newId(): string {
   return globalThis.crypto.randomUUID()
 }
@@ -39,7 +55,7 @@ export function stateFromView(view: ZoneSetView): EditorState {
   return {
     origin: view.origin,
     rings: view.rings.map((r) => ({ key: r.id, km: formatKm(r.radius_m), fee: feeInput(r.fee), minOrder: minOrderInput(r.min_order ?? 0), label: r.label ?? "" })),
-    cut_lines: view.cut_lines.map((c) => ({ id: c.id, label: c.label, points: c.points })),
+    cut_lines: editorCuts(view.cut_lines),
     rules: view.rules.map((u) => ({ id: u.id, anchor: u.anchor, mode: u.mode, fee: u.fee, label: u.label })),
   }
 }
@@ -48,7 +64,7 @@ export function stateFromPayload(p: DraftPayload): EditorState {
   return {
     origin: p.origin,
     rings: p.rings.map((r) => ({ key: newId(), km: formatKm(r.radius_m), fee: feeInput(r.fee), minOrder: minOrderInput(r.min_order), label: r.label ?? "" })),
-    cut_lines: p.cut_lines.map((c) => ({ ...c, id: c.id ?? newId() })),
+    cut_lines: editorCuts(p.cut_lines),
     rules: p.rules.map((u) => ({ ...u, id: u.id ?? newId() })),
   }
 }
@@ -97,7 +113,7 @@ export function buildPayload(state: EditorState): BuildResult {
       min_order: parseMinOrder(r.minOrder) as number,
       label: r.label.trim() || null,
     })),
-    cut_lines: state.cut_lines.map((c) => ({ id: c.id, label: c.label?.trim() || null, points: c.points })),
+    cut_lines: state.cut_lines.map((c) => ({ id: c.id, label: c.label?.trim() || null, kind: c.kind, points: c.points })),
     rules: state.rules.map((u) => ({
       id: u.id,
       anchor: u.anchor,
@@ -145,14 +161,14 @@ export function payloadFromView(view: ZoneSetView): DraftPayload {
   return {
     origin: view.origin,
     rings: view.rings.map((r) => ({ radius_m: r.radius_m, fee: r.fee, min_order: r.min_order ?? 0, label: r.label ?? null })),
-    cut_lines: view.cut_lines.map((c) => ({ id: c.id, label: c.label ?? null, points: c.points })),
+    cut_lines: view.cut_lines.map((c) => ({ id: c.id, label: c.label ?? null, kind: c.kind ?? "line", points: c.points })),
     rules: view.rules.map((u) => ({ id: u.id, anchor: u.anchor, mode: u.mode, fee: u.fee, label: u.label ?? null })),
   }
 }
 
 /**
  * True when two zone sets would price every address the same and look the
- * same: same centre, rings, cut lines and piece settings. Ids, the order of
+ * same: same centre, rings, cut lines and shapes, and piece settings. Ids, the order of
  * lines and settings, and sub-millimetre coordinate noise don't count.
  */
 export function zonesEqual(a: DraftPayload, b: DraftPayload): boolean {
@@ -164,7 +180,7 @@ export function zonesEqual(a: DraftPayload, b: DraftPayload): boolean {
       rings: [...p.rings]
         .sort((x, y) => x.radius_m - y.radius_m)
         .map((r) => [r.radius_m, Math.round(r.fee * 100), Math.round((r.min_order ?? 0) * 100), text(r.label)]),
-      lines: p.cut_lines.map((c) => `${text(c.label)}|${c.points.map(pt).join(";")}`).sort(),
+      lines: p.cut_lines.map((c) => `${c.kind ?? "line"}|${text(c.label)}|${c.points.map(pt).join(";")}`).sort(),
       rules: p.rules
         .map((u) => `${pt(u.anchor)}|${u.mode}|${u.fee === null ? "" : Math.round(u.fee * 100)}|${text(u.label)}`)
         .sort(),

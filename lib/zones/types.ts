@@ -14,9 +14,19 @@ export interface RingInput {
   label: string | null
 }
 
+/**
+ * "polygon": a closed cut shape (points open, at least 3).
+ * "path": an open cut drawn segment by segment, ending on a ring circle; it
+ * cuts only where it is drawn, so with the ring edge it closes an area.
+ * "line": an open cut line extended past the outer ring, from sets saved
+ * before shapes; absent = "line".
+ */
+export type CutKind = "line" | "polygon" | "path"
+
 export interface CutLineInput {
   id: string | null
   label: string | null
+  kind?: CutKind
   points: LatLng[]
 }
 

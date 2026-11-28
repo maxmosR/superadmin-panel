@@ -9,9 +9,9 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { newId, ringErrors, sortRings, type EditorState, type RingRow } from "@/lib/zones/editor-state"
-import { distanceM, formatLatLng, parseLatLngText } from "@/lib/zones/geo"
+import { distanceM, formatLatLng, inPolygon, parseLatLngText } from "@/lib/zones/geo"
 import { feeInput, formatArea, formatDistance, formatEuro, parseEuro, parseKm } from "@/lib/zones/units"
-import type { IssueRef, LatLng, PieceCollection, RuleMode, ZoneIssue } from "@/lib/zones/types"
+import type { IssueRef, LatLng, PieceCollection, PieceFeature, RuleMode, ZoneIssue } from "@/lib/zones/types"
 import { ZONE_LIMITS } from "@/lib/zones/types"
 import { PlacesSearch } from "./places-search"
 import { ringColor } from "./zone-map"
@@ -250,8 +250,10 @@ export function CutStep({
               onClick={() => onSelect(l.id)}
             >
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{fmt(t.zones.line, { n: i + 1 })}</span>
-                <span className="text-xs text-muted-foreground">{t.zones.points(l.points.length)}</span>
+                <span className="text-sm font-medium">{fmt(l.kind === "polygon" ? t.zones.shape : t.zones.line, { n: i + 1 })}</span>
+                <span className="text-xs text-muted-foreground">
+                  {l.kind === "polygon" ? t.zones.corners(l.points.length) : t.zones.points(l.points.length)}
+                </span>
                 <div className="flex-1" />
                 <Button
                   size="icon"
@@ -299,19 +301,34 @@ export function pieceState(p: { deliverable: boolean; rule_id: string | null }):
   return p.rule_id ? "custom" : "ring"
 }
 
+/** The piece a map point is in (display only), or undefined. */
+function pieceAt(pieces: PieceCollection | null, at: LatLng): PieceFeature | undefined {
+  return pieces?.features.find((f) => inPolygon(at, f.geometry.coordinates))
+}
+
 export function PiecesStep({
   pieces,
+  rules,
+  issues,
+  readOnly,
   hover,
   onHover,
   onShow,
+  edit,
 }: {
   pieces: PieceCollection | null
+  rules: EditorState["rules"]
+  issues: ZoneIssue[]
+  readOnly: boolean
   hover: string | null
   onHover: (id: string | null) => void
   onShow: (ref: IssueRef) => void
+  edit: Edit
 }) {
   const { t } = useI18n()
   const list = pieces?.features ?? []
+  const orphaned = new Set(issues.filter((x) => x.code === "orphaned_rule" && x.ref?.kind === "rule").map((x) => x.ref!.id))
+  const conflictPieces = new Set(issues.filter((x) => x.code === "conflicting_rules" && x.ref?.kind === "piece").map((x) => x.ref!.id))
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">{t.zones.piecesIntro}</p>
@@ -356,6 +373,49 @@ export function PiecesStep({
           </TableBody>
         </Table>
       )}
+      <Separator />
+      <h3 className="text-sm font-medium">{t.zones.settingsTitle}</h3>
+      {rules.length === 0 && <p className="text-sm text-muted-foreground">{t.zones.noSettings}</p>}
+      <div className="space-y-2">
+        {rules.map((u) => {
+          const piece = pieceAt(pieces, u.anchor)
+          const problem = orphaned.has(u.id)
+            ? t.zones.settingOrphaned
+            : piece && conflictPieces.has(piece.id)
+              ? t.zones.settingConflict
+              : null
+          const what =
+            u.mode === "excluded" ? t.zones.pieceStates.none : u.mode === "custom_fee" && u.fee !== null ? formatEuro(u.fee) : t.zones.pieceStates.ring
+          return (
+            <div key={u.id} className={`flex items-start gap-2 rounded-md border p-2 ${problem ? "border-destructive/50" : ""}`}>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm">
+                  {piece && (
+                    <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full" style={{ background: ringColor(piece.properties.ring_index) }} />
+                  )}
+                  {what}
+                  {u.label && <span className="text-muted-foreground"> · {u.label}</span>}
+                </div>
+                {problem && <p className="text-xs text-destructive">{problem}</p>}
+              </div>
+              <Button size="icon" variant="ghost" className="h-7 w-7" title={t.zones.showOnMap} aria-label={t.zones.showOnMap} onClick={() => onShow({ kind: "rule", id: u.id })}>
+                <MapPin className="h-4 w-4" aria-hidden />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                title={t.zones.deleteSetting}
+                aria-label={t.zones.deleteSetting}
+                disabled={readOnly}
+                onClick={() => edit((s) => ({ ...s, rules: s.rules.filter((x) => x.id !== u.id) }))}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+              </Button>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -381,7 +441,9 @@ export function PiecePopover({
 }) {
   const { t, fmt } = useI18n()
   const piece = pieces?.features.find((f) => f.id === popover.pieceId)
-  const rule = piece?.properties.rule_id ? state.rules.find((u) => u.id === piece.properties.rule_id) : undefined
+  // Every pin in this piece (more than one = a conflict the database ignores).
+  const inPiece = piece ? state.rules.filter((u) => inPolygon(u.anchor, piece.geometry.coordinates)) : []
+  const rule = (piece?.properties.rule_id ? state.rules.find((u) => u.id === piece.properties.rule_id) : undefined) ?? inPiece[0]
   const ringRow = state.rings.find((r) => parseKm(r.km) === piece?.properties.radius_m)
   const ringFee = ringRow ? parseEuro(ringRow.fee) : null
   const [mode, setMode] = useState<RuleMode>(rule?.mode ?? (piece && !piece.properties.deliverable ? "excluded" : "ring_fee"))
@@ -395,11 +457,14 @@ export function PiecePopover({
     if (invalid) return
     const trimmed = label.trim() || null
     edit((s) => {
+      // The piece keeps at most one pin: the others in it go.
+      const others = new Set(inPiece.filter((u) => u.id !== rule?.id).map((u) => u.id))
+      const rest = s.rules.filter((u) => !others.has(u.id))
       // "Ring fee" without a label needs no rule.
-      if (mode === "ring_fee" && !trimmed) return { ...s, rules: s.rules.filter((u) => u.id !== rule?.id) }
+      if (mode === "ring_fee" && !trimmed) return { ...s, rules: rest.filter((u) => u.id !== rule?.id) }
       const next = { mode, fee: mode === "custom_fee" ? customFee : null, label: trimmed }
-      if (rule) return { ...s, rules: s.rules.map((u) => (u.id === rule.id ? { ...u, ...next } : u)) }
-      return { ...s, rules: [...s.rules, { id: newId(), anchor: popover.at, ...next }] }
+      if (rule) return { ...s, rules: rest.map((u) => (u.id === rule.id ? { ...u, ...next } : u)) }
+      return { ...s, rules: [...rest, { id: newId(), anchor: popover.at, ...next }] }
     })
     onClose()
   }
