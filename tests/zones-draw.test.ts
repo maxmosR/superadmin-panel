@@ -77,3 +77,25 @@ describe("inPolygon (which piece a pin is in, display only)", () => {
     expect(inPolygon({ lat: 44.41, lng: 8.91 }, [])).toBe(false)
   })
 })
+
+describe("geodesics match the database (PostGIS geography, WGS84)", () => {
+  // Reference values from ST_Project / ST_Distance on the same points.
+  it("destination", () => {
+    const w = destination(O, 8300, 270)
+    expect(w.lat).toBeCloseTo(44.4055524758102, 8)
+    expect(w.lng).toBeCloseTo(8.84210433057851, 8)
+    const ne = destination(O, 10500, 30)
+    expect(ne.lat).toBeCloseTo(44.4874130953785, 8)
+    expect(ne.lng).toBeCloseTo(9.01229897612807, 8)
+  })
+  it("distance", () => {
+    expect(distanceM(O, { lat: 44.45, lng: 8.85 })).toBeCloseTo(9118.24108971, 2)
+    expect(distanceM(O, O)).toBe(0)
+  })
+  it("a point snapped onto a far circle is on the database's circle", () => {
+    // Was ~23 m off at 8.3 km east-west with a spherical earth.
+    const s = snapToRing(destination(O, 8310, 275), O, [8300], 20)
+    expect(s).not.toBeNull()
+    expect(distanceM(O, s!)).toBeCloseTo(8300, 3)
+  })
+})
